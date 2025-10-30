@@ -1,0 +1,349 @@
+import { useState } from 'react';
+import { Users, TrendingUp, Clock, AlertCircle, Award, Target, ChevronDown } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Button } from './ui/button';
+import { Progress } from './ui/progress';
+import { Badge } from './ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import {
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
+import { User } from '../App';
+import { teamMembers } from './mockData';
+
+interface ManagerDashboardProps {
+  user: User;
+}
+
+const progressData = [
+  { month: 'Apr', teamAvg: 45, topPerformer: 65 },
+  { month: 'May', teamAvg: 52, topPerformer: 70 },
+  { month: 'Jun', teamAvg: 58, topPerformer: 75 },
+  { month: 'Jul', teamAvg: 65, topPerformer: 82 },
+  { month: 'Aug', teamAvg: 71, topPerformer: 88 },
+  { month: 'Sep', teamAvg: 76, topPerformer: 91 },
+  { month: 'Oct', teamAvg: 79, topPerformer: 91 },
+];
+
+const categoryData = [
+  { category: 'Frontend', completed: 24, inProgress: 8 },
+  { category: 'Backend', completed: 18, inProgress: 12 },
+  { category: 'Cloud', completed: 15, inProgress: 6 },
+  { category: 'Leadership', completed: 12, inProgress: 9 },
+  { category: 'Compliance', completed: 30, inProgress: 2 },
+];
+
+const completionDistribution = [
+  { name: '0-25%', value: 2, color: '#ef4444' },
+  { name: '26-50%', value: 3, color: '#f97316' },
+  { name: '51-75%', value: 8, color: '#eab308' },
+  { name: '76-100%', value: 12, color: '#22c55e' },
+];
+
+export function ManagerDashboard({ user }: ManagerDashboardProps) {
+  const [timeRange, setTimeRange] = useState('7days');
+  const [expandedEmployee, setExpandedEmployee] = useState<string | null>(null);
+
+  const avgCompletion = Math.round(teamMembers.reduce((acc, m) => acc + m.completionRate, 0) / teamMembers.length);
+  const totalActiveModules = teamMembers.reduce((acc, m) => acc + m.activeModules, 0);
+  const topPerformer = teamMembers.reduce((prev, current) => 
+    prev.completionRate > current.completionRate ? prev : current
+  );
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl mb-2">Team Analytics Dashboard</h1>
+        <p className="text-slate-600">Monitor team progress and learning outcomes</p>
+      </div>
+
+      {/* Time Range Selector */}
+      <div className="flex justify-end mb-6">
+        <Select value={timeRange} onValueChange={setTimeRange}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7days">Last 7 days</SelectItem>
+            <SelectItem value="30days">Last 30 days</SelectItem>
+            <SelectItem value="90days">Last 90 days</SelectItem>
+            <SelectItem value="1year">Last year</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Key Metrics */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-slate-600">Team Size</div>
+              <Users className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="text-3xl mb-1">{teamMembers.length}</div>
+            <div className="text-sm text-slate-500">active learners</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-slate-600">Avg. Completion</div>
+              <TrendingUp className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="text-3xl mb-1">{avgCompletion}%</div>
+            <div className="text-sm text-green-600">↑ 12% from last month</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-slate-600">Active Modules</div>
+              <Clock className="w-5 h-5 text-orange-600" />
+            </div>
+            <div className="text-3xl mb-1">{totalActiveModules}</div>
+            <div className="text-sm text-slate-500">across team</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-slate-600">Top Performer</div>
+              <Award className="w-5 h-5 text-yellow-600" />
+            </div>
+            <div className="text-lg mb-1 truncate">{topPerformer.name}</div>
+            <div className="text-sm text-slate-500">{topPerformer.completionRate}% complete</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts Section */}
+      <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {/* Progress Trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Progress Trend</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={progressData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line 
+                  type="monotone" 
+                  dataKey="teamAvg" 
+                  stroke="#3b82f6" 
+                  strokeWidth={2}
+                  name="Team Average"
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="topPerformer" 
+                  stroke="#22c55e" 
+                  strokeWidth={2}
+                  name="Top Performer"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Completion Distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Completion Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={completionDistribution}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, value }) => `${name}: ${value}`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {completionDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Category Performance */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Learning by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={categoryData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="category" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="completed" fill="#22c55e" name="Completed" />
+                <Bar dataKey="inProgress" fill="#f97316" name="In Progress" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Team Members Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Team Members Performance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {teamMembers.map(member => (
+              <div key={member.id}>
+                <div 
+                  className="flex items-center gap-4 p-4 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                  onClick={() => setExpandedEmployee(expandedEmployee === member.id ? null : member.id)}
+                >
+                  <Avatar className="w-12 h-12">
+                    <AvatarImage src={member.avatar} alt={member.name} />
+                    <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span>{member.name}</span>
+                      {member.completionRate >= 85 && (
+                        <Badge className="bg-yellow-500">Top Performer</Badge>
+                      )}
+                    </div>
+                    <div className="text-sm text-slate-500">{member.position}</div>
+                  </div>
+
+                  <div className="hidden sm:block text-center flex-shrink-0">
+                    <div className="text-sm text-slate-600">Active Modules</div>
+                    <div>{member.activeModules}</div>
+                  </div>
+
+                  <div className="w-32 lg:w-48 flex-shrink-0">
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="text-slate-600">Progress</span>
+                      <span>{member.completionRate}%</span>
+                    </div>
+                    <Progress value={member.completionRate} className="h-2" />
+                  </div>
+
+                  <Button variant="ghost" size="icon" className="flex-shrink-0">
+                    <ChevronDown 
+                      className={`w-4 h-4 transition-transform ${
+                        expandedEmployee === member.id ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </Button>
+                </div>
+
+                {/* Expanded Details */}
+                {expandedEmployee === member.id && (
+                  <div className="ml-16 mr-4 mb-4 p-4 bg-slate-50 rounded-lg space-y-4">
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-sm text-slate-600 mb-1">Completed Modules</div>
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-green-600" />
+                          <span className="text-lg">15</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-600 mb-1">Learning Time</div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-blue-600" />
+                          <span className="text-lg">42h 30m</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-slate-600 mb-1">Compliance Status</div>
+                        <Badge className="bg-green-600">Up to date</Badge>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-sm text-slate-600 mb-2">Recent Activity</div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span>Completed "React Advanced Patterns"</span>
+                          <span className="text-slate-500">2 days ago</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>In progress: "Microservices Architecture"</span>
+                          <span className="text-slate-500">Started 5 days ago</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm">View Details</Button>
+                      <Button variant="outline" size="sm">Assign Module</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Compliance Alert */}
+      <Card className="mt-6 border-orange-200 bg-orange-50">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-6 h-6 text-orange-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg mb-2">Compliance Training Due</h3>
+              <p className="text-slate-600 mb-4">
+                2 team members need to complete mandatory compliance training by November 15, 2024
+              </p>
+              <Button variant="outline" className="bg-white">
+                View Details
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
