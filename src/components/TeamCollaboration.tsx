@@ -9,6 +9,7 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { teamModules, teamMembers } from './mockData';
+import { addModuleToUserPath } from '../storage';
 import { LearningPathGraph } from './LearningPathGraph';
 
 interface TeamCollaborationProps {
@@ -79,7 +80,8 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   };
 
   const handleMerge = (module: LearningModule) => {
-    alert(`Merging "${module.title}" into your learning path...`);
+    addModuleToUserPath(module);
+    alert(`Merged "${module.title}" into your learning path. Check your dashboard.`);
   };
 
   const handleAddComment = () => {

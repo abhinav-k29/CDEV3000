@@ -7,6 +7,7 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { User, LearningModule } from '../App';
 import { mockModules } from './mockData';
+import { loadUserModules } from '../storage';
 import { GenerateModuleDialog } from './GenerateModuleDialog';
 
 interface EmployeeDashboardProps {
@@ -15,7 +16,17 @@ interface EmployeeDashboardProps {
 }
 
 export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps) {
-  const [modules] = useState<LearningModule[]>(mockModules);
+  const [modules] = useState<LearningModule[]>(() => {
+    const stored = loadUserModules() ?? [];
+    // Merge stored (user-added) modules with default mock modules, deduped by id
+    const seen = new Set<string>();
+    const merged = [...stored, ...mockModules].filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+    return merged;
+  });
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
 
   const completedModules = modules.filter(m => m.progress === 100).length;

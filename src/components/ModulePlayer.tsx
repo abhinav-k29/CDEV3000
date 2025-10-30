@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Textarea } from './ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { LearningModule } from '../App';
+import { updateModuleProgress } from '../storage';
 
 interface ModulePlayerProps {
   module: LearningModule;
@@ -116,6 +117,7 @@ export function ModulePlayer({ module, onBack }: ModulePlayerProps) {
     if (currentProgress < 100) {
       const newProgress = Math.min(100, currentProgress + 20);
       setCurrentProgress(newProgress);
+      updateModuleProgress(module.id, newProgress, module);
     }
   };
 
