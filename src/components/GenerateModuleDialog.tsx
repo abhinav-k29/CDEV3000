@@ -18,6 +18,8 @@ import {
   SelectValue,
 } from './ui/select';
 import { Checkbox } from './ui/checkbox';
+import { addModuleToUserPath } from '../storage';
+import { mockModules } from './mockData';
 
 interface GenerateModuleDialogProps {
   open: boolean;
@@ -31,6 +33,7 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
   const [timeframe, setTimeframe] = useState('4-weeks');
   const [preferredTypes, setPreferredTypes] = useState<string[]>(['video']);
   const [difficulty, setDifficulty] = useState('intermediate');
+  const [selectedTitles, setSelectedTitles] = useState<Set<string>>(new Set());
 
   const handleGenerate = () => {
     setIsGenerating(true);
@@ -49,6 +52,7 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
     setTimeframe('4-weeks');
     setPreferredTypes(['video']);
     setDifficulty('intermediate');
+    setSelectedTitles(new Set());
   };
 
   const toggleContentType = (type: string) => {
@@ -66,6 +70,42 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
     { title: 'Leadership Fundamentals', duration: 90, type: 'video', match: 85 },
     { title: 'Cloud Architecture with AWS', duration: 180, type: 'video', match: 82 },
   ];
+
+  const toggleSelectSuggested = (title: string) => {
+    setSelectedTitles(prev => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title); else next.add(title);
+      return next;
+    });
+  };
+
+  const addSelectedToPath = () => {
+    if (selectedTitles.size === 0) return handleClose();
+    // Try map by title from mockModules; if missing, create minimal entries
+    const byTitle = new Map(mockModules.map(m => [m.title, m] as const));
+    suggestedModules.forEach(s => {
+      if (!selectedTitles.has(s.title)) return;
+      const found = byTitle.get(s.title);
+      if (found) {
+        addModuleToUserPath(found);
+      } else {
+        // Minimal LearningModule fallback
+        addModuleToUserPath({
+          id: `gen-${s.title.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`,
+          title: s.title,
+          description: 'Added from generated learning plan',
+          type: (s.type as any) || 'video',
+          duration: s.duration,
+          difficulty: (difficulty as any) || 'intermediate',
+          category: 'Generated',
+          mandatory: false,
+          progress: 0,
+          tags: [],
+        } as any);
+      }
+    });
+    handleClose();
+  };
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -201,7 +241,7 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
             <div>
               <h4 className="text-sm mb-3 flex items-center gap-2">
                 <BookOpen className="w-4 h-4" />
-                Recommended Modules (in order)
+                Recommended Modules (select the ones you want)
               </h4>
               <div className="space-y-2">
                 {suggestedModules.map((module, index) => (
@@ -209,9 +249,10 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
                     key={index}
                     className="flex items-center gap-3 p-3 border rounded-lg hover:bg-slate-50 transition-colors"
                   >
-                    <div className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 rounded-full text-xs flex-shrink-0">
-                      {index + 1}
-                    </div>
+                    <Checkbox 
+                      checked={selectedTitles.has(module.title)} 
+                      onCheckedChange={() => toggleSelectSuggested(module.title)}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm truncate">{module.title}</div>
                       <div className="text-xs text-slate-500">
@@ -241,10 +282,11 @@ export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialo
                 Close
               </Button>
               <Button
-                onClick={handleClose}
+                onClick={addSelectedToPath}
                 className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                disabled={selectedTitles.size === 0}
               >
-                Add to My Learning Path
+                Add Selected to My Path
               </Button>
             </div>
           </div>

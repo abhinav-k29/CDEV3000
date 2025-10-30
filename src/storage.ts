@@ -59,4 +59,17 @@ export function updateModuleProgress(moduleId: string, newProgress: number, base
   }
 }
 
+export function removeModuleFromUserPath(moduleId: string): void {
+  const existing = loadUserModules() ?? [];
+  const filtered = existing.filter(m => m.id !== moduleId);
+  saveUserModules(filtered);
+}
+
+export function resetCompletedToInProgress(progressFallback = 80): void {
+  const existing = loadUserModules() ?? [];
+  if (existing.length === 0) return;
+  const updated = existing.map(m => (m.progress === 100 ? { ...m, progress: progressFallback } : m));
+  saveUserModules(updated);
+}
+
 
