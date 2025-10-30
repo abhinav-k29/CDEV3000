@@ -5,6 +5,8 @@ import { ManagerDashboard } from './components/ManagerDashboard';
 import { TeamCollaboration } from './components/TeamCollaboration';
 import { ModulePlayer } from './components/ModulePlayer';
 import { Navbar } from './components/Navbar';
+import { mockModules, teamModules } from './components/mockData';
+import { loadUserModules } from './storage';
 
 export type UserRole = 'employee' | 'manager' | null;
 
@@ -49,13 +51,68 @@ function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'collaboration' | 'manager' | 'player'>('landing');
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
 
-  // Initialize dark mode on mount
+  // Initialize dark mode and hydrate view from URL on mount
   useEffect(() => {
     const darkMode = localStorage.getItem('darkMode') === 'true';
     if (darkMode) {
       document.documentElement.classList.add('dark');
     }
+
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view') as typeof currentView | null;
+    const moduleId = params.get('module');
+
+    if (viewParam) {
+      setCurrentView(viewParam);
+    }
+
+    if (viewParam === 'player' && moduleId) {
+      const module = findModuleById(moduleId);
+      if (module) setSelectedModule(module);
+    }
+
+    const onPopState = () => {
+      const ps = new URLSearchParams(window.location.search);
+      const v = ps.get('view') as typeof currentView | null;
+      const mid = ps.get('module');
+      if (v) {
+        setCurrentView(v);
+      } else {
+        setCurrentView('landing');
+      }
+      if (v === 'player' && mid) {
+        const m = findModuleById(mid);
+        setSelectedModule(m || null);
+      } else {
+        setSelectedModule(null);
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  const findModuleById = (id: string): LearningModule | null => {
+    const personal = loadUserModules() ?? [];
+    const all = [...personal, ...mockModules, ...teamModules];
+    const seen = new Set<string>();
+    for (const m of all) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      if (m.id === id) return m;
+    }
+    return null;
+  };
+
+  const pushView = (view: typeof currentView, mod?: LearningModule | null) => {
+    const params = new URLSearchParams();
+    params.set('view', view);
+    if (view === 'player' && mod) {
+      params.set('module', mod.id);
+    }
+    const url = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState({}, '', url);
+  };
 
   const handleLogin = (role: UserRole) => {
     // Mock login
@@ -69,22 +126,28 @@ function App() {
       avatar: role === 'manager' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' : 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'
     };
     setCurrentUser(mockUser);
-    setCurrentView(role === 'manager' ? 'manager' : 'dashboard');
+    const nextView = role === 'manager' ? 'manager' : 'dashboard';
+    setCurrentView(nextView);
+    pushView(nextView);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setCurrentView('landing');
+    pushView('landing');
     setSelectedModule(null);
   };
 
   const handlePlayModule = (module: LearningModule) => {
     setSelectedModule(module);
     setCurrentView('player');
+    pushView('player', module);
   };
 
   const handleBackToDashboard = () => {
-    setCurrentView(currentUser?.role === 'manager' ? 'manager' : 'dashboard');
+    const nextView = currentUser?.role === 'manager' ? 'manager' : 'dashboard';
+    setCurrentView(nextView);
+    pushView(nextView);
     setSelectedModule(null);
   };
 
