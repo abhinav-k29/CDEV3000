@@ -75,16 +75,17 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   const [newMessage, setNewMessage] = useState('');
   const [showGraph, setShowGraph] = useState(false);
 
-  // Load chat messages for a module when selected
+  // Load chat messages for a module when selected (from either Team Modules or Browse Branches)
   useEffect(() => {
-    if (selectedModule?.chatRoomId) {
-      const messages = getChatRoomMessages(selectedModule.chatRoomId);
+    const moduleToCheck = selectedModule || selectedBranch;
+    if (moduleToCheck?.chatRoomId) {
+      const messages = getChatRoomMessages(moduleToCheck.chatRoomId);
       setModuleChatMessages(prev => ({
         ...prev,
-        [selectedModule.chatRoomId!]: messages,
+        [moduleToCheck.chatRoomId!]: messages,
       }));
     }
-  }, [selectedModule]);
+  }, [selectedModule, selectedBranch]);
 
   // Refresh activities periodically and when activities change
   useEffect(() => {
@@ -96,7 +97,23 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   }, []);
 
   const handleBranch = (module: LearningModule) => {
+    // Check if user already has a branch from this module
+    const existingBranch = userBranches.find(
+      b => b.sourceModuleId === module.id || b.parentModule === module.id
+    );
+    
+    if (existingBranch) {
+      alert(`You have already created a branch from "${module.title}". Branch name: "${existingBranch.branchName}"`);
+      return;
+    }
+    
     const branchedModule = createBranch(module, user.id, user.name);
+    
+    if (!branchedModule) {
+      alert(`Unable to create branch. You may have already branched this module.`);
+      return;
+    }
+    
     setUserBranches(prev => [...prev, branchedModule]);
     setTeamBranches(prev => [...prev, branchedModule]);
     setModules(prev => [...prev, branchedModule]);
@@ -298,9 +315,23 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                         variant="outline"
                         className="flex-1"
                         onClick={() => handleBranch(module)}
+                        disabled={userBranches.some(
+                          b => b.sourceModuleId === module.id || b.parentModule === module.id
+                        )}
+                        title={
+                          userBranches.some(
+                            b => b.sourceModuleId === module.id || b.parentModule === module.id
+                          )
+                            ? 'You already have a branch from this module'
+                            : 'Create a branch from this module'
+                        }
                       >
                         <GitBranch className="w-4 h-4 mr-2" />
-                        Branch
+                        {userBranches.some(
+                          b => b.sourceModuleId === module.id || b.parentModule === module.id
+                        )
+                          ? 'Already Branched'
+                          : 'Branch'}
                       </Button>
                       <Button
                         variant="outline"
@@ -480,12 +511,12 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                             <Button
                               variant="outline"
                               onClick={() => {
-                                setSelectedModule(branch);
-                                setSelectedBranch(branch);
+                                setSelectedModule(selectedModule?.id === branch.id ? null : branch);
+                                setSelectedBranch(selectedBranch?.id === branch.id ? null : branch);
                               }}
                             >
                               <MessageSquare className="w-4 h-4 mr-2" />
-                              View & Chat
+                              {selectedModule?.id === branch.id ? 'Hide Chat' : 'View & Chat'}
                             </Button>
                             <Button
                               variant="outline"
@@ -495,6 +526,79 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                               View Module
                             </Button>
                           </div>
+
+                          {/* Chat Section */}
+                          {selectedModule?.id === branch.id && (
+                            <div className="border-t pt-4 space-y-4">
+                              <h4 className="flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4" />
+                                Discussion
+                              </h4>
+
+                              {/* Module Chat Room - Shared across all users with same source module */}
+                              {branch.chatRoomId && (
+                                <>
+                                  <div className="mb-2 text-xs text-slate-500">
+                                    💬 Chat room for all users learning this module
+                                  </div>
+                                  {moduleChatMessages[branch.chatRoomId] && moduleChatMessages[branch.chatRoomId].length > 0 ? (
+                                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                                      {moduleChatMessages[branch.chatRoomId].map(msg => {
+                                        const isCurrentUser = msg.userId === user.id;
+                                        return (
+                                          <div key={msg.id} className={`flex gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                                            <Avatar className="w-8 h-8 flex-shrink-0">
+                                              <AvatarImage src={msg.userAvatar} />
+                                              <AvatarFallback>{msg.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                                            </Avatar>
+                                            <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
+                                              <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm">{isCurrentUser ? 'You' : msg.userName}</span>
+                                                <span className="text-xs text-slate-500">
+                                                  {new Date(msg.timestamp).toLocaleString()}
+                                                </span>
+                                              </div>
+                                              <div className={`inline-block px-3 py-2 rounded-lg ${
+                                                isCurrentUser 
+                                                  ? 'bg-blue-600 text-white' 
+                                                  : 'bg-slate-100 text-slate-900'
+                                              }`}>
+                                                <p className="text-sm break-words">{msg.message}</p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-slate-500 text-center py-4">No messages yet. Be the first to share your thoughts!</p>
+                                  )}
+
+                                  <div className="flex gap-2">
+                                    <Input
+                                      placeholder="Type a message..."
+                                      value={newChatMessage}
+                                      onChange={(e) => setNewChatMessage(e.target.value)}
+                                      onKeyPress={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleAddModuleChatMessage();
+                                        }
+                                      }}
+                                    />
+                                    <Button onClick={handleAddModuleChatMessage} disabled={!newChatMessage.trim()}>
+                                      <Send className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
+                              {!branch.chatRoomId && (
+                                <p className="text-sm text-slate-500 text-center py-4">
+                                  Chat room not available for this branch.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     );

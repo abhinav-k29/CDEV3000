@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Clock, CheckCircle2, AlertCircle, Sparkles, TrendingUp, Play, FileText, Headphones, Video, Trash2, GitBranch } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { mockModules, teamModules } from './mockData';
-import { addModuleToUserPath, loadUserModules, removeModuleFromUserPath, resetCompletedToInProgress, getUserBranches } from '../storage';
+import { addModuleToUserPath, loadUserModules, removeModuleFromUserPath, resetCompletedToInProgress, getUserBranches, getTeamBranches } from '../storage';
 import { GenerateModuleDialog } from './GenerateModuleDialog';
 import { HeroBanner } from './dashboard/HeroBanner';
 import { CarouselSection } from './dashboard/CarouselSection';
@@ -24,15 +24,40 @@ interface EmployeeDashboardProps {
 export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps) {
   const defaultIds = new Set(mockModules.map(m => m.id));
   const [modules, setModules] = useState<LearningModule[]>(() => {
-    const stored = loadUserModules() ?? [];
-    // Merge stored (user-added) modules with default mock modules, deduped by id
+    const stored = loadUserModules(user.id) ?? [];
+    const userBranches = getUserBranches(user.id);
+    
+    // Get only a few original/default modules that user has started (with progress > 0)
+    const defaultModulesWithProgress = mockModules
+      .filter(m => m.progress > 0)
+      .slice(0, 3); // Only include first 3 default modules with progress
+    
+    // Combine: default modules with progress + user-added + branches
     const seen = new Set<string>();
-    const merged = [...stored, ...mockModules].filter(m => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
+    const personalizedModules: LearningModule[] = [];
+    
+    defaultModulesWithProgress.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
     });
-    // Normalize problematic thumbnails to fixed crop to avoid tall carousels
+    
+    stored.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
+    });
+    
+    userBranches.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
+    });
+    
+    // Normalize problematic thumbnails
     const needsCrop = new Set([
       'Design Systems & Component Libraries',
       'Leadership Fundamentals',
@@ -45,18 +70,122 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
       const suffix = `${hasQuery ? '&' : '?'}h=250&fit=crop&crop=entropy`;
       return url + suffix;
     };
-    return merged.map(m => needsCrop.has(m.title) ? { ...m, thumbnail: normalizeThumb(m.thumbnail) } : m);
+    return personalizedModules.map(m => needsCrop.has(m.title) ? { ...m, thumbnail: normalizeThumb(m.thumbnail) } : m);
   });
   const handleRemove = (moduleId: string) => {
     // Only remove from user path (ignore defaults)
     if (defaultIds.has(moduleId)) return;
-    removeModuleFromUserPath(moduleId);
+    removeModuleFromUserPath(moduleId, user.id);
     setModules(prev => prev.filter(m => m.id !== moduleId));
   };
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const featured = modules.find(m => m.progress > 0 && m.progress < 100) || modules[0];
-  const buckets = recommendModules(user, modules);
+  // Reload modules when they're added/removed
+  useEffect(() => {
+    const stored = loadUserModules(user.id) ?? [];
+    const userBranches = getUserBranches(user.id);
+    
+    // Get only a few original/default modules that user has started (with progress > 0)
+    // Limit to first 2-3 default modules that have some progress
+    const defaultModulesWithProgress = mockModules
+      .filter(m => m.progress > 0)
+      .slice(0, 3); // Only include first 3 default modules with progress
+    
+    // Combine:
+    // 1. A few original default modules (those user has started)
+    // 2. All user-added modules from localStorage (includes pulled/merged modules)
+    // 3. User's own branches
+    const seen = new Set<string>();
+    const personalizedModules: LearningModule[] = [];
+    
+    // Add default modules with progress
+    defaultModulesWithProgress.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
+    });
+    
+    // Add all user-added modules (from AI generator, search, pulls, etc.)
+    stored.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
+    });
+    
+    // Add user's own branches (if not already in stored modules)
+    userBranches.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        personalizedModules.push(m);
+      }
+    });
+    
+    // Normalize problematic thumbnails
+    const needsCrop = new Set([
+      'Design Systems & Component Libraries',
+      'Leadership Fundamentals',
+      'Intro to Machine Learning',
+    ]);
+    const normalizeThumb = (url?: string) => {
+      if (!url) return url;
+      if (url.includes('fit=crop')) return url;
+      const hasQuery = url.includes('?');
+      const suffix = `${hasQuery ? '&' : '?'}h=250&fit=crop&crop=entropy`;
+      return url + suffix;
+    };
+    const normalized = personalizedModules.map(m => needsCrop.has(m.title) ? { ...m, thumbnail: normalizeThumb(m.thumbnail) } : m);
+    
+    setModules(normalized);
+  }, [refreshKey, user.id]);
+
+  const featured = modules.find(m => m.progress > 0 && m.progress < 100) || modules.find(m => m.progress === 0) || modules[0];
+  // Get all available modules for recommendations (not just user's path)
+  const allAvailableModules = useMemo(() => {
+    const userModules = loadUserModules(user.id) ?? [];
+    const allBranches = getTeamBranches();
+    // Combine all modules: mock, team, user modules, and branches
+    const seen = new Set<string>();
+    const all: LearningModule[] = [];
+    
+    // Add mock modules
+    mockModules.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        all.push(m);
+      }
+    });
+    
+    // Add team modules
+    teamModules.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        all.push(m);
+      }
+    });
+    
+    // Add user modules
+    userModules.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        all.push(m);
+      }
+    });
+    
+    // Add team branches
+    allBranches.forEach(m => {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        all.push(m);
+      }
+    });
+    
+    return all;
+  }, [user.id, refreshKey]);
+
+  const buckets = recommendModules(user, allAvailableModules);
   const [query, setQuery] = useState('');
   const moduleIds = new Set(modules.map(m => m.id));
   
@@ -70,7 +199,7 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
       seen.add(m.id);
       return true;
     });
-  }, []);
+  }, [refreshKey]); // Refresh when modules are added/removed
 
   const searchResults = useMemo(() => {
     if (query.trim().length < 1) return [];
@@ -91,11 +220,9 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
   }, [query, allDatabaseModules, moduleIds]);
 
   const handleAddFromSearch = (m: LearningModule) => {
-    addModuleToUserPath(m);
-    setModules(prev => {
-      if (prev.find(x => x.id === m.id)) return prev;
-      return [...prev, m];
-    });
+    addModuleToUserPath(m, user.id);
+    // Trigger refresh to reload all modules from storage
+    setRefreshKey(prev => prev + 1);
     setQuery('');
   };
 
@@ -116,6 +243,7 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
 
   const completedModules = filteredModules.filter(m => m.progress === 100).length;
   const inProgressModules = filteredModules.filter(m => m.progress > 0 && m.progress < 100).length;
+  const notStartedModules = filteredModules.filter(m => m.progress === 0 && !m.mandatory).length;
   const mandatoryModules = filteredModules.filter(m => m.mandatory);
   const totalProgress = Math.round(modules.reduce((acc, m) => acc + m.progress, 0) / modules.length);
 
@@ -311,6 +439,7 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
           <div className="flex items-center justify-between gap-3">
             <TabsList>
               <TabsTrigger value="in-progress">In Progress ({inProgressModules})</TabsTrigger>
+              <TabsTrigger value="not-started">Not Started ({notStartedModules})</TabsTrigger>
               <TabsTrigger value="mandatory">Mandatory ({mandatoryModules.length})</TabsTrigger>
               <TabsTrigger value="completed">Completed ({completedModules})</TabsTrigger>
             </TabsList>
@@ -332,6 +461,27 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
           ) : (
             <div className="grid lg:grid-cols-2 gap-6">
               {filteredModules.filter(m => m.progress > 0 && m.progress < 100).map(module => (
+              <ModuleCard 
+                key={module.id} 
+                module={module} 
+                onPlay={onPlayModule}
+                canDelete={!defaultIds.has(module.id)}
+                onDelete={handleRemove}
+                getTypeIcon={getTypeIcon}
+              />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="not-started" className="space-y-4">
+          {query.trim().length > 0 && filteredModules.filter(m => m.progress === 0 && !m.mandatory).length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              No not-started modules match "{query}"
+            </div>
+          ) : (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {filteredModules.filter(m => m.progress === 0 && !m.mandatory).map(module => (
               <ModuleCard 
                 key={module.id} 
                 module={module} 
@@ -465,7 +615,7 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
         <Button
           variant="outline"
           onClick={() => {
-            resetCompletedToInProgress();
+            resetCompletedToInProgress(user.id);
             setModules(prev => prev.map(m => (m.progress === 100 ? { ...m, progress: 80 } : m)));
           }}
           title="Move all completed to in progress"
@@ -474,10 +624,15 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
         </Button>
       </div>
 
-      <GenerateModuleDialog 
-        open={isGenerateOpen}
-        onOpenChange={setIsGenerateOpen}
-      />
+        <GenerateModuleDialog 
+          open={isGenerateOpen} 
+          onOpenChange={setIsGenerateOpen}
+          onModulesAdded={() => {
+            // Immediately refresh modules when modules are added
+            setRefreshKey(prev => prev + 1);
+          }}
+          userId={user.id}
+        />
     </div>
   );
 }

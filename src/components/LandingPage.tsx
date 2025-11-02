@@ -50,11 +50,10 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               
               <div className="flex gap-8 pt-4">
                 <div>
-                  <div className="text-3xl">500+</div>
-                  <div className="text-blue-200 text-sm">Companies</div>
+                  <div className="text-3xl">Developed for Companies</div>
                 </div>
                 <div>
-                  <div className="text-3xl">50K+</div>
+                  <div className="text-3xl">6k+</div>
                   <div className="text-blue-200 text-sm">Active Learners</div>
                 </div>
                 <div>

@@ -118,7 +118,9 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
     if (currentProgress < 100) {
       const newProgress = Math.min(100, currentProgress + 20);
       setCurrentProgress(newProgress);
-      updateModuleProgress(module.id, newProgress, module);
+      if (user) {
+        updateModuleProgress(module.id, newProgress, user.id, module);
+      }
       
       // Log completion activity
       if (newProgress === 100 && user) {

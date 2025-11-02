@@ -1,10 +1,18 @@
 import { LearningModule } from './App';
 
-const USER_MODULES_KEY = 'userModules';
+// User-specific storage keys (prefixed with userId)
+const getUserModulesKey = (userId: string) => `userModules-${userId}`;
+const getUserBranchesKey = (userId: string) => `userBranches-${userId}`;
+const getChatRoomsKey = () => 'moduleChatRooms'; // Shared across all users
+const getActivitiesKey = () => 'teamActivities'; // Shared across all users
 
-export function loadUserModules(): LearningModule[] | null {
+export function loadUserModules(userId?: string): LearningModule[] | null {
+  // If no userId provided, return empty (should not happen, but handle gracefully)
+  if (!userId) return null;
+  
   try {
-    const raw = localStorage.getItem(USER_MODULES_KEY);
+    const key = getUserModulesKey(userId);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as LearningModule[];
     return Array.isArray(parsed) ? parsed : null;
@@ -13,63 +21,72 @@ export function loadUserModules(): LearningModule[] | null {
   }
 }
 
-export function saveUserModules(modules: LearningModule[]): void {
+export function saveUserModules(modules: LearningModule[], userId?: string): void {
+  if (!userId) return;
+  
   try {
-    localStorage.setItem(USER_MODULES_KEY, JSON.stringify(modules));
+    const key = getUserModulesKey(userId);
+    localStorage.setItem(key, JSON.stringify(modules));
   } catch {
     // ignore write errors
   }
 }
 
-export function addModuleToUserPath(module: LearningModule): void {
-  const existing = loadUserModules() ?? [];
+export function addModuleToUserPath(module: LearningModule, userId?: string): void {
+  if (!userId) return;
+  
+  const existing = loadUserModules(userId) ?? [];
   const alreadyExists = existing.some(m => m.id === module.id);
   if (alreadyExists) {
-    saveUserModules(existing);
+    saveUserModules(existing, userId);
     return;
   }
   const normalized: LearningModule = { ...module };
-  saveUserModules([normalized, ...existing]);
+  saveUserModules([normalized, ...existing], userId);
 }
 
-export function saveOrUpdateUserModule(module: LearningModule): void {
-  const existing = loadUserModules() ?? [];
+export function saveOrUpdateUserModule(module: LearningModule, userId?: string): void {
+  if (!userId) return;
+  const existing = loadUserModules(userId) ?? [];
   const idx = existing.findIndex(m => m.id === module.id);
   if (idx >= 0) {
     const updated = [...existing];
     updated[idx] = { ...existing[idx], ...module };
-    saveUserModules(updated);
+    saveUserModules(updated, userId);
   } else {
-    saveUserModules([module, ...existing]);
+    saveUserModules([module, ...existing], userId);
   }
 }
 
-export function updateModuleProgress(moduleId: string, newProgress: number, base?: LearningModule): void {
-  const existing = loadUserModules() ?? [];
+export function updateModuleProgress(moduleId: string, newProgress: number, userId?: string, base?: LearningModule): void {
+  if (!userId) return;
+  const existing = loadUserModules(userId) ?? [];
   const idx = existing.findIndex(m => m.id === moduleId);
   if (idx >= 0) {
     const updated = [...existing];
     updated[idx] = { ...updated[idx], progress: newProgress };
-    saveUserModules(updated);
+    saveUserModules(updated, userId);
     return;
   }
   if (base) {
     const created: LearningModule = { ...base, progress: newProgress };
-    saveUserModules([created, ...existing]);
+    saveUserModules([created, ...existing], userId);
   }
 }
 
-export function removeModuleFromUserPath(moduleId: string): void {
-  const existing = loadUserModules() ?? [];
+export function removeModuleFromUserPath(moduleId: string, userId?: string): void {
+  if (!userId) return;
+  const existing = loadUserModules(userId) ?? [];
   const filtered = existing.filter(m => m.id !== moduleId);
-  saveUserModules(filtered);
+  saveUserModules(filtered, userId);
 }
 
-export function resetCompletedToInProgress(progressFallback = 80): void {
-  const existing = loadUserModules() ?? [];
+export function resetCompletedToInProgress(userId?: string, progressFallback = 80): void {
+  if (!userId) return;
+  const existing = loadUserModules(userId) ?? [];
   if (existing.length === 0) return;
   const updated = existing.map(m => (m.progress === 100 ? { ...m, progress: progressFallback } : m));
-  saveUserModules(updated);
+  saveUserModules(updated, userId);
 }
 
 // Branch-related storage keys
@@ -94,14 +111,25 @@ export function createBranch(
   sourceModule: LearningModule,
   userId: string,
   userName: string
-): LearningModule {
-  const existing = loadUserModules() ?? [];
+): LearningModule | null {
+  // Check if user already has a branch from this source module
+  const userBranches = getUserBranches(userId);
+  const sourceModuleId = sourceModule.id;
+  const existingBranch = userBranches.find(
+    b => b.sourceModuleId === sourceModuleId || b.parentModule === sourceModuleId
+  );
+  
+  if (existingBranch) {
+    // User already has a branch from this module
+    return null;
+  }
+  
+  const existing = loadUserModules(userId) ?? [];
   const allBranches = getAllBranches();
   const existingBranchNames = allBranches.map(b => b.branchName || '').filter(Boolean);
   
   const branchName = generateBranchName(userName, sourceModule.title, existingBranchNames);
   const branchId = `branch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const sourceModuleId = sourceModule.id;
   
   const branchedModule: LearningModule = {
     ...sourceModule,
@@ -118,7 +146,7 @@ export function createBranch(
   };
 
   // Save to user's modules
-  saveUserModules([branchedModule, ...existing]);
+  saveUserModules([branchedModule, ...existing], userId);
   
   // Save branch metadata
   saveBranchMetadata(branchedModule);
@@ -134,7 +162,7 @@ export function pullFromBranch(
   branchModule: LearningModule,
   userId: string
 ): LearningModule {
-  const existing = loadUserModules() ?? [];
+  const existing = loadUserModules(userId) ?? [];
   const pulledModule: LearningModule = {
     ...branchModule,
     id: `pulled-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -147,7 +175,7 @@ export function pullFromBranch(
     chatRoomId: branchModule.chatRoomId || getChatRoomId(branchModule.sourceModuleId || branchModule.id),
   };
 
-  saveUserModules([pulledModule, ...existing]);
+  saveUserModules([pulledModule, ...existing], userId);
   
   return pulledModule;
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LandingPage } from './components/LandingPage';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
 import { ManagerDashboard } from './components/ManagerDashboard';
@@ -61,6 +61,18 @@ function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'dashboard' | 'collaboration' | 'manager' | 'player'>('landing');
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
 
+  const findModuleById = useCallback((id: string): LearningModule | null => {
+    const personal = loadUserModules() ?? [];
+    const all = [...personal, ...mockModules, ...teamModules];
+    const seen = new Set<string>();
+    for (const m of all) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      if (m.id === id) return m;
+    }
+    return null;
+  }, []);
+
   // Hydrate view from URL on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -100,19 +112,7 @@ function App() {
 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [currentUser]);
-
-  const findModuleById = (id: string): LearningModule | null => {
-    const personal = loadUserModules() ?? [];
-    const all = [...personal, ...mockModules, ...teamModules];
-    const seen = new Set<string>();
-    for (const m of all) {
-      if (seen.has(m.id)) continue;
-      seen.add(m.id);
-      if (m.id === id) return m;
-    }
-    return null;
-  };
+  }, [currentUser, findModuleById]);
 
   const pushView = (view: typeof currentView, mod?: LearningModule | null) => {
     const params = new URLSearchParams();
@@ -125,7 +125,7 @@ function App() {
   };
 
   const handleLogin = (role: UserRole) => {
-    // Mock login
+    // Default login (Alex Rivera for employee, Sarah Johnson for manager)
     const mockUser: User = {
       id: role === 'manager' ? 'mgr-001' : 'emp-001',
       name: role === 'manager' ? 'Sarah Johnson' : 'Alex Rivera',
@@ -135,11 +135,13 @@ function App() {
       position: role === 'manager' ? 'Engineering Manager' : 'Senior Software Engineer',
       avatar: role === 'manager' ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150' : 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150'
     };
+    
     setCurrentUser(mockUser);
     const nextView = role === 'manager' ? 'manager' : 'dashboard';
     setCurrentView(nextView);
     pushView(nextView);
   };
+  
 
   const handleLogout = () => {
     setCurrentUser(null);
@@ -197,7 +199,7 @@ function App() {
       {currentView === 'player' && selectedModule && (
         <ModulePlayer 
           module={selectedModule}
-          user={currentUser}
+          user={currentUser || undefined}
           onBack={handleBackToDashboard}
         />
       )}

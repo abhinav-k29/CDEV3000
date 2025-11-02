@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from './ui/dropdown-menu';
 import { User } from '../App';
 
@@ -19,7 +20,6 @@ interface NavbarProps {
 
 export function Navbar({ user, currentView, onNavigate, onLogout }: NavbarProps) {
   
-
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
@@ -117,6 +117,7 @@ export function Navbar({ user, currentView, onNavigate, onLogout }: NavbarProps)
                   )}
                   <DropdownMenuSeparator />
                 </div>
+                
                 <DropdownMenuItem onClick={onLogout}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
