@@ -11,8 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { User } from '../App';
-import { teamMembers } from './mockData';
+import { User, LearningModule } from '../App';
+import { teamMembers, mockModules } from './mockData';
+import { loadUserModules } from '../storage';
+import { getTeamBranches, getUserBranches } from '../storage';
 
 interface LearningPathGraphProps {
   user: User;
@@ -30,6 +32,8 @@ interface PathNode {
   y: number;
   branches?: string[];
   mergedFrom?: string;
+  moduleId?: string; // Link to actual module
+  branchId?: string; // Link to branch if applicable
 }
 
 interface PathConnection {
@@ -44,8 +48,138 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
   const [hoveredNode, setHoveredNode] = useState<PathNode | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
-  // Define the learning path structure
-  const nodes: PathNode[] = [
+  // Build graph from actual data
+  const buildGraphFromData = (): { nodes: PathNode[]; connections: PathConnection[] } => {
+    const allModules = [...mockModules];
+    const userModules = loadUserModules() ?? [];
+    const teamBranches = getTeamBranches();
+    const userBranches = getUserBranches(user.id);
+    
+    // Combine all modules
+    const allData = [...allModules, ...userModules, ...teamBranches];
+    const seen = new Set<string>();
+    const uniqueModules = allData.filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+
+    const nodes: PathNode[] = [];
+    const connections: PathConnection[] = [];
+    
+    // Layout parameters
+    const MAIN_X = 200;
+    const BRANCH_X_SPACING = 250;
+    const Y_SPACING = 120;
+    let currentY = 100;
+    
+    // Find main path modules (non-branched, from mockModules)
+    const mainPathModules = mockModules.filter(m => !m.isBranched && !m.branchId);
+    const mainPathCount = Math.min(mainPathModules.length, 5); // Limit to first 5 for visualization
+    
+    // Create main path nodes
+    const mainPathNodes: PathNode[] = [];
+    mainPathModules.slice(0, mainPathCount).forEach((module, idx) => {
+      const node: PathNode = {
+        id: `main-${module.id}`,
+        title: module.title,
+        type: 'main',
+        owner: 'Company',
+        status: module.progress === 100 ? 'completed' : module.progress > 0 ? 'in-progress' : 'not-started',
+        x: MAIN_X,
+        y: currentY + (idx * Y_SPACING),
+        moduleId: module.id,
+      };
+      mainPathNodes.push(node);
+      nodes.push(node);
+      
+      // Connect to previous main node
+      if (idx > 0) {
+        connections.push({
+          from: mainPathNodes[idx - 1].id,
+          to: node.id,
+          type: 'main',
+        });
+      }
+    });
+    
+    currentY += mainPathCount * Y_SPACING;
+    
+    // Create branch nodes
+    let branchX = MAIN_X + BRANCH_X_SPACING;
+    const branchNodesBySource: Record<string, PathNode[]> = {};
+    
+    teamBranches.forEach((branch, branchIdx) => {
+      const sourceModuleId = branch.sourceModuleId || branch.parentModule || branch.id;
+      const sourceMainNode = mainPathNodes.find(n => n.moduleId === sourceModuleId);
+      
+      if (!sourceMainNode) return;
+      
+      const branchOwner = teamMembers.find(m => m.id === branch.branchOwnerId) || 
+                         { name: branch.createdBy || 'Unknown', avatar: undefined };
+      
+      const branchNode: PathNode = {
+        id: `branch-${branch.branchId || branch.id}`,
+        title: branch.title,
+        type: 'branch',
+        owner: branchOwner.name || 'Unknown',
+        ownerAvatar: branchOwner.avatar,
+        status: branch.progress === 100 ? 'completed' : branch.progress > 0 ? 'in-progress' : 'not-started',
+        x: branchX + (Math.floor(branchIdx / 3) * BRANCH_X_SPACING),
+        y: sourceMainNode.y + ((branchIdx % 3) * 80) - 40,
+        moduleId: branch.id,
+        branchId: branch.branchId,
+      };
+      
+      nodes.push(branchNode);
+      
+      // Connect branch to source
+      connections.push({
+        from: sourceMainNode.id,
+        to: branchNode.id,
+        type: 'branch',
+      });
+      
+      // Track branches by source for potential merges
+      if (!branchNodesBySource[sourceModuleId]) {
+        branchNodesBySource[sourceModuleId] = [];
+      }
+      branchNodesBySource[sourceModuleId].push(branchNode);
+      
+      // Check if this module was pulled (merged)
+      const pulledInstances = userModules.filter(m => m.pulledFrom === branch.branchId);
+      pulledInstances.forEach((pulled, mergeIdx) => {
+        // Create a merge node further right
+        const mergeX = branchNode.x + BRANCH_X_SPACING;
+        const mergeNode: PathNode = {
+          id: `merge-${pulled.id}`,
+          title: `${branch.title} (Merged)`,
+          type: 'merge',
+          owner: user.name,
+          ownerAvatar: user.avatar,
+          status: pulled.progress === 100 ? 'completed' : pulled.progress > 0 ? 'in-progress' : 'not-started',
+          x: mergeX,
+          y: branchNode.y + (mergeIdx * 60),
+          moduleId: pulled.id,
+          mergedFrom: branchNode.id,
+        };
+        
+        nodes.push(mergeNode);
+        connections.push({
+          from: branchNode.id,
+          to: mergeNode.id,
+          type: 'merge',
+        });
+      });
+    });
+    
+    return { nodes, connections };
+  };
+
+  const { nodes, connections } = buildGraphFromData();
+
+  // Original static nodes (kept for fallback/reference)
+  const staticNodes: PathNode[] = [
     // Main path
     { id: 'n1', title: 'React Basics', type: 'main', owner: 'Company', status: 'completed', x: 150, y: 100 },
     { id: 'n2', title: 'React Advanced', type: 'main', owner: 'Company', status: 'completed', x: 150, y: 200 },
@@ -112,17 +246,23 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
       const member = teamMembers.find(m => m.id === selectedView);
       if (member) {
         filteredNodes = nodes.filter(n => 
-          n.owner === 'Company' || n.owner === member.name
+          n.owner === 'Company' || n.owner.toLowerCase() === member.name.toLowerCase()
         );
       } else if (selectedView === user.id) {
         filteredNodes = nodes.filter(n => 
-          n.owner === 'Company' || n.owner === user.name
+          n.owner === 'Company' || n.owner.toLowerCase() === user.name.toLowerCase()
         );
       }
     }
+    
+    // Also filter connections based on filtered nodes
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredConnections = connections.filter(c => 
+      filteredNodeIds.has(c.from) && filteredNodeIds.has(c.to)
+    );
 
     // Draw connections
-    connections.forEach(conn => {
+    filteredConnections.forEach(conn => {
       const fromNode = filteredNodes.find(n => n.id === conn.from);
       const toNode = filteredNodes.find(n => n.id === conn.to);
       
@@ -185,7 +325,7 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
       ctx.fill();
     });
 
-  }, [selectedView, hoveredNode]);
+  }, [selectedView, hoveredNode, user]);
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -197,8 +337,23 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
 
     setMousePos({ x: e.clientX, y: e.clientY });
 
-    // Check if hovering over a node
-    const hoveredNode = nodes.find(node => {
+    // Check if hovering over a node (use filtered nodes for current view)
+    const { nodes: currentNodes } = buildGraphFromData();
+    let filteredNodes = currentNodes;
+    if (selectedView !== 'all') {
+      const member = teamMembers.find(m => m.id === selectedView);
+      if (member) {
+        filteredNodes = currentNodes.filter(n => 
+          n.owner === 'Company' || n.owner.toLowerCase() === member.name.toLowerCase()
+        );
+      } else if (selectedView === user.id) {
+        filteredNodes = currentNodes.filter(n => 
+          n.owner === 'Company' || n.owner.toLowerCase() === user.name.toLowerCase()
+        );
+      }
+    }
+    
+    const hoveredNode = filteredNodes.find(node => {
       const distance = Math.sqrt(Math.pow(x - node.x, 2) + Math.pow(y - node.y, 2));
       return distance < 15;
     });

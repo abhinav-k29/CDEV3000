@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { GitBranch, GitMerge, MessageSquare, Users, Star, Eye, Play, User as UserIcon, Send, Network } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { GitBranch, GitMerge, MessageSquare, Users, Star, Eye, Play, User as UserIcon, Send, Network, Clock, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -9,28 +9,28 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { teamModules, teamMembers } from './mockData';
-import { addModuleToUserPath } from '../storage';
+import { addModuleToUserPath, pullFromBranch, createBranch, getTeamBranches, getUserBranches, getChatRoomMessages, addChatMessage, ChatMessage as StorageChatMessage, getActivities, logPullActivity, logActivity, ActivityItem } from '../storage';
 import { LearningPathGraph } from './LearningPathGraph';
+import { mockModules } from './mockData';
 
 interface TeamCollaborationProps {
   user: User;
   onPlayModule: (module: LearningModule) => void;
 }
 
-interface ChatMessage {
-  id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  message: string;
-  timestamp: Date;
-}
+// Using ChatMessage from storage.ts - keeping interface for compatibility
 
 export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps) {
-  const [modules] = useState<LearningModule[]>(teamModules);
+  const [modules, setModules] = useState<LearningModule[]>(() => [...teamModules, ...mockModules]);
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+  const [teamBranches, setTeamBranches] = useState<LearningModule[]>(() => getTeamBranches(user.id));
+  const [userBranches, setUserBranches] = useState<LearningModule[]>(() => getUserBranches(user.id));
+  const [selectedBranch, setSelectedBranch] = useState<LearningModule | null>(null);
+  const [moduleChatMessages, setModuleChatMessages] = useState<Record<string, StorageChatMessage[]>>({});
+  const [newChatMessage, setNewChatMessage] = useState('');
+  const [activities, setActivities] = useState<ActivityItem[]>(() => getActivities(20));
+  const [chatMessages, setChatMessages] = useState<StorageChatMessage[]>([
     {
       id: 'msg-1',
       userId: 'emp-002',
@@ -75,13 +75,92 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   const [newMessage, setNewMessage] = useState('');
   const [showGraph, setShowGraph] = useState(false);
 
+  // Load chat messages for a module when selected
+  useEffect(() => {
+    if (selectedModule?.chatRoomId) {
+      const messages = getChatRoomMessages(selectedModule.chatRoomId);
+      setModuleChatMessages(prev => ({
+        ...prev,
+        [selectedModule.chatRoomId!]: messages,
+      }));
+    }
+  }, [selectedModule]);
+
+  // Refresh activities periodically and when activities change
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActivities(getActivities(20));
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleBranch = (module: LearningModule) => {
-    alert(`Creating a branch of "${module.title}" to customize for your learning path...`);
+    const branchedModule = createBranch(module, user.id, user.name);
+    setUserBranches(prev => [...prev, branchedModule]);
+    setTeamBranches(prev => [...prev, branchedModule]);
+    setModules(prev => [...prev, branchedModule]);
+    // Refresh activities
+    setActivities(getActivities(20));
+    alert(`Created branch "${branchedModule.branchName}" of "${module.title}"!`);
+  };
+
+  const handlePull = (branchModule: LearningModule) => {
+    const pulledModule = pullFromBranch(branchModule, user.id);
+    addModuleToUserPath(pulledModule);
+    // Log activity with proper user name
+    logPullActivity(branchModule, user.id, user.name);
+    // Refresh activities
+    setActivities(getActivities(20));
+    alert(`Pulled "${branchModule.title}" from ${teamMembers.find(m => m.id === branchModule.branchOwnerId)?.name || 'team member'}'s branch into your learning path!`);
   };
 
   const handleMerge = (module: LearningModule) => {
-    addModuleToUserPath(module);
-    alert(`Merged "${module.title}" into your learning path. Check your dashboard.`);
+    // For non-branched modules, just add to path
+    if (!module.branchId) {
+      addModuleToUserPath(module);
+      alert(`Added "${module.title}" to your learning path. Check your dashboard.`);
+    } else {
+      // For branched modules, use pull functionality
+      handlePull(module);
+    }
+  };
+
+  const handleAddModuleChatMessage = () => {
+    if (!newChatMessage.trim() || !selectedModule?.chatRoomId) return;
+    
+    const message: StorageChatMessage = {
+      id: `msg-${Date.now()}`,
+      userId: user.id,
+      userName: user.name,
+      userAvatar: user.avatar,
+      message: newChatMessage,
+      timestamp: new Date(),
+    };
+    
+    addChatMessage(selectedModule.chatRoomId, message);
+    
+    // Log comment activity
+    logActivity({
+      type: 'comment',
+      userId: user.id,
+      userName: user.name,
+      userAvatar: user.avatar,
+      targetModuleId: selectedModule.id,
+      targetModuleTitle: selectedModule.title,
+    });
+    
+    setModuleChatMessages(prev => ({
+      ...prev,
+      [selectedModule.chatRoomId!]: [
+        ...(prev[selectedModule.chatRoomId!] || []),
+        message,
+      ],
+    }));
+    
+    // Refresh activities
+    setActivities(getActivities(20));
+    setNewChatMessage('');
   };
 
   const handleAddComment = () => {
@@ -144,6 +223,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
           <Tabs defaultValue="team-modules">
             <TabsList>
               <TabsTrigger value="team-modules">Team Modules</TabsTrigger>
+              <TabsTrigger value="browse-branches">Browse Branches</TabsTrigger>
               <TabsTrigger value="activity">Recent Activity</TabsTrigger>
               <TabsTrigger value="chat">Team Chat</TabsTrigger>
             </TabsList>
@@ -246,40 +326,63 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                           Discussion
                         </h4>
 
-                        {module.comments && module.comments.length > 0 ? (
-                          <div className="space-y-3">
-                            {module.comments.map(comment => (
-                              <div key={comment.id} className="flex gap-3 p-3 bg-slate-50 rounded-lg">
-                                <Avatar className="w-8 h-8 flex-shrink-0">
-                                  <AvatarFallback>{comment.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm">{comment.userName}</span>
-                                    <span className="text-xs text-slate-500">
-                                      {new Date(comment.timestamp).toLocaleDateString()}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-slate-700">{comment.text}</p>
-                                </div>
+                        {/* Module Chat Room - Shared across all users with same source module */}
+                        {selectedModule.chatRoomId && (
+                          <>
+                            <div className="mb-2 text-xs text-slate-500">
+                              💬 Chat room for all users learning this module
+                            </div>
+                            {moduleChatMessages[selectedModule.chatRoomId] && moduleChatMessages[selectedModule.chatRoomId].length > 0 ? (
+                              <div className="space-y-3 max-h-60 overflow-y-auto">
+                                {moduleChatMessages[selectedModule.chatRoomId].map(msg => {
+                                  const isCurrentUser = msg.userId === user.id;
+                                  return (
+                                    <div key={msg.id} className={`flex gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                                      <Avatar className="w-8 h-8 flex-shrink-0">
+                                        <AvatarImage src={msg.userAvatar} />
+                                        <AvatarFallback>{msg.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                                      </Avatar>
+                                      <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-sm">{isCurrentUser ? 'You' : msg.userName}</span>
+                                          <span className="text-xs text-slate-500">
+                                            {new Date(msg.timestamp).toLocaleString()}
+                                          </span>
+                                        </div>
+                                        <div className={`inline-block px-3 py-2 rounded-lg ${
+                                          isCurrentUser 
+                                            ? 'bg-blue-600 text-white' 
+                                            : 'bg-slate-100 text-slate-900'
+                                        }`}>
+                                          <p className="text-sm break-words">{msg.message}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-500 text-center py-4">No comments yet. Be the first to share your thoughts!</p>
-                        )}
+                            ) : (
+                              <p className="text-sm text-slate-500 text-center py-4">No messages yet. Be the first to share your thoughts!</p>
+                            )}
 
-                        <div className="flex gap-2">
-                          <Textarea
-                            placeholder="Add a comment..."
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            rows={2}
-                          />
-                          <Button onClick={handleAddComment} disabled={!newComment.trim()}>
-                            Comment
-                          </Button>
-                        </div>
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="Type a message..."
+                                value={newChatMessage}
+                                onChange={(e) => setNewChatMessage(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleAddModuleChatMessage();
+                                  }
+                                }}
+                              />
+                              <Button onClick={handleAddModuleChatMessage} disabled={!newChatMessage.trim()}>
+                                <Send className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </CardContent>
@@ -287,46 +390,192 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
               ))}
             </TabsContent>
 
+            <TabsContent value="browse-branches" className="space-y-4 mt-6">
+              <div className="mb-4">
+                <p className="text-sm text-slate-600">
+                  Browse and pull modules from your team members' branches. Each pull creates an independent copy in your learning path.
+                </p>
+              </div>
+              
+              {teamBranches.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <GitBranch className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                    <p className="text-slate-600">No branches available yet. Create one by branching a module!</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {teamBranches.map(branch => {
+                    const branchOwner = teamMembers.find(m => m.id === branch.branchOwnerId);
+                    const isOwnBranch = branch.branchOwnerId === user.id;
+                    return (
+                      <Card key={branch.branchId} className="hover:shadow-md transition-shadow">
+                        <CardHeader>
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Badge variant="outline" className="text-purple-600 border-purple-600">
+                                  <GitBranch className="w-3 h-3 mr-1" />
+                                  {branch.branchName}
+                                </Badge>
+                                {isOwnBranch && (
+                                  <Badge variant="secondary">Your Branch</Badge>
+                                )}
+                                <Badge variant="secondary">{branch.category}</Badge>
+                              </div>
+                              <CardTitle className="text-xl mb-2">{branch.title}</CardTitle>
+                              <CardDescription>{branch.description}</CardDescription>
+                              
+                              <div className="flex items-center gap-4 mt-3 text-sm text-slate-600">
+                                {branchOwner && (
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="w-6 h-6">
+                                      <AvatarImage src={branchOwner.avatar} />
+                                      <AvatarFallback>{branchOwner.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                                    </Avatar>
+                                    <span>Created by {branchOwner.name}</span>
+                                  </div>
+                                )}
+                                {branch.sourceModuleId && (
+                                  <div className="text-xs text-slate-500">
+                                    Source: {modules.find(m => m.id === branch.sourceModuleId)?.title || 'Unknown module'}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+
+                        <CardContent className="space-y-4">
+                          <div className="flex flex-wrap gap-2">
+                            {branch.tags.map(tag => (
+                              <Badge key={tag} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+
+                          <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-4 h-4" />
+                              {branch.duration} min
+                            </div>
+                            <Badge variant="outline" className="capitalize">
+                              {branch.difficulty}
+                            </Badge>
+                          </div>
+
+                          <div className="flex gap-2">
+                            {!isOwnBranch && (
+                              <Button
+                                variant="default"
+                                className="flex-1"
+                                onClick={() => handlePull(branch)}
+                              >
+                                <GitMerge className="w-4 h-4 mr-2" />
+                                Pull to My Path
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedModule(branch);
+                                setSelectedBranch(branch);
+                              }}
+                            >
+                              <MessageSquare className="w-4 h-4 mr-2" />
+                              View & Chat
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => onPlayModule(branch)}
+                            >
+                              <Play className="w-4 h-4 mr-2" />
+                              View Module
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
+
             <TabsContent value="activity" className="space-y-4 mt-6">
               <Card>
+                <CardHeader>
+                  <CardTitle>Recent Activity</CardTitle>
+                  <CardDescription>Team activity across all learning modules and branches</CardDescription>
+                </CardHeader>
                 <CardContent className="p-6">
-                  <div className="space-y-6">
-                    <ActivityItem
-                      icon={<GitBranch className="w-4 h-4 text-purple-600" />}
-                      user="Maria Garcia"
-                      action="branched"
-                      target="React Advanced Patterns"
-                      time="2 hours ago"
-                    />
-                    <ActivityItem
-                      icon={<MessageSquare className="w-4 h-4 text-blue-600" />}
-                      user="James Chen"
-                      action="commented on"
-                      target="React Advanced Patterns"
-                      time="5 hours ago"
-                    />
-                    <ActivityItem
-                      icon={<GitMerge className="w-4 h-4 text-green-600" />}
-                      user="Sarah Kim"
-                      action="merged"
-                      target="Microservices Testing Strategies"
-                      time="1 day ago"
-                    />
-                    <ActivityItem
-                      icon={<Star className="w-4 h-4 text-yellow-600" />}
-                      user="David Johnson"
-                      action="starred"
-                      target="Design Systems & Component Libraries"
-                      time="1 day ago"
-                    />
-                    <ActivityItem
-                      icon={<GitBranch className="w-4 h-4 text-purple-600" />}
-                      user="Alex Rivera"
-                      action="created"
-                      target="TypeScript Best Practices"
-                      time="2 days ago"
-                    />
-                  </div>
+                  {activities.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <p>No activity yet. Start branching or pulling modules to see activity!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {activities.map(activity => {
+                        const getIcon = () => {
+                          switch (activity.type) {
+                            case 'branch':
+                              return <GitBranch className="w-4 h-4 text-purple-600" />;
+                            case 'pull':
+                              return <GitMerge className="w-4 h-4 text-green-600" />;
+                            case 'comment':
+                              return <MessageSquare className="w-4 h-4 text-blue-600" />;
+                            case 'complete':
+                              return <CheckCircle2 className="w-4 h-4 text-green-600" />;
+                            default:
+                              return <Star className="w-4 h-4 text-yellow-600" />;
+                          }
+                        };
+
+                        const getAction = () => {
+                          switch (activity.type) {
+                            case 'branch':
+                              return 'branched';
+                            case 'pull':
+                              return 'pulled';
+                            case 'merge':
+                              return 'merged';
+                            case 'comment':
+                              return 'commented on';
+                            case 'complete':
+                              return 'completed';
+                            default:
+                              return activity.type;
+                          }
+                        };
+
+                        const formatTime = (timestamp: Date) => {
+                          const now = new Date();
+                          const diff = now.getTime() - timestamp.getTime();
+                          const minutes = Math.floor(diff / 60000);
+                          const hours = Math.floor(minutes / 60);
+                          const days = Math.floor(hours / 24);
+
+                          if (minutes < 1) return 'just now';
+                          if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+                          if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+                          if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+                          return timestamp.toLocaleDateString();
+                        };
+
+                        return (
+                          <ActivityItem
+                            key={activity.id}
+                            icon={getIcon()}
+                            user={activity.userName}
+                            action={getAction()}
+                            target={activity.targetModuleTitle || 'Unknown Module'}
+                            time={formatTime(activity.timestamp)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

@@ -7,11 +7,12 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Textarea } from './ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { LearningModule } from '../App';
-import { updateModuleProgress } from '../storage';
+import { LearningModule, User } from '../App';
+import { updateModuleProgress, logActivity } from '../storage';
 
 interface ModulePlayerProps {
   module: LearningModule;
+  user?: User;
   onBack: () => void;
 }
 
@@ -28,7 +29,7 @@ interface ModuleComment {
   replies?: ModuleComment[];
 }
 
-export function ModulePlayer({ module, onBack }: ModulePlayerProps) {
+export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
   const [currentProgress, setCurrentProgress] = useState(module.progress);
   const [currentSection, setCurrentSection] = useState(0);
   const [newComment, setNewComment] = useState('');
@@ -118,6 +119,18 @@ export function ModulePlayer({ module, onBack }: ModulePlayerProps) {
       const newProgress = Math.min(100, currentProgress + 20);
       setCurrentProgress(newProgress);
       updateModuleProgress(module.id, newProgress, module);
+      
+      // Log completion activity
+      if (newProgress === 100 && user) {
+        logActivity({
+          type: 'complete',
+          userId: user.id,
+          userName: user.name,
+          userAvatar: user.avatar,
+          targetModuleId: module.id,
+          targetModuleTitle: module.title,
+        });
+      }
     }
   };
 

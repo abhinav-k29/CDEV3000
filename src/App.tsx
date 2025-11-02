@@ -38,6 +38,14 @@ export interface LearningModule {
   comments?: Comment[];
   popularityScore?: number;
   recommendedFor?: string[];
+  // Branch-related properties
+  branchId?: string; // Unique branch identifier
+  branchOwnerId?: string; // User who created this branch
+  branchName?: string; // Auto-generated branch name (e.g., "alex-react-patterns-v2")
+  sourceModuleId?: string; // Original module ID this was branched from
+  isPublic?: boolean; // Visibility (default: true - all branches visible)
+  pulledFrom?: string; // Branch ID this module was pulled from (for tracking)
+  chatRoomId?: string; // Shared chat room for all users with same sourceModuleId
 }
 
 export interface Comment {
@@ -189,6 +197,7 @@ function App() {
       {currentView === 'player' && selectedModule && (
         <ModulePlayer 
           module={selectedModule}
+          user={currentUser}
           onBack={handleBackToDashboard}
         />
       )}
