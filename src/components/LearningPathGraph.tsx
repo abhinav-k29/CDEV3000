@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { ArrowLeft, GitBranch, GitMerge, Circle, Users, User as UserIcon, Maximize2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -11,8 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select';
-import { User } from '../App';
-import { teamMembers } from './mockData';
+import { User, LearningModule } from '../App';
+import { teamMembers, mockModules } from './mockData';
+import { loadUserModules } from '../storage';
+import { getTeamBranches, getUserBranches, initializeMockBranches } from '../storage';
 
 interface LearningPathGraphProps {
   user: User;
@@ -30,12 +32,15 @@ interface PathNode {
   y: number;
   branches?: string[];
   mergedFrom?: string;
+  moduleId?: string; // Link to actual module
+  branchId?: string; // Link to branch if applicable
 }
 
 interface PathConnection {
   from: string;
   to: string;
-  type: 'main' | 'branch' | 'merge';
+  type: 'main' | 'push' | 'pull' | 'merge';
+  label?: string; // Optional label for the connection
 }
 
 export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
@@ -44,52 +49,151 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
   const [hoveredNode, setHoveredNode] = useState<PathNode | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
-  // Define the learning path structure
-  const nodes: PathNode[] = [
-    // Main path
-    { id: 'n1', title: 'React Basics', type: 'main', owner: 'Company', status: 'completed', x: 150, y: 100 },
-    { id: 'n2', title: 'React Advanced', type: 'main', owner: 'Company', status: 'completed', x: 150, y: 200 },
-    { id: 'n3', title: 'TypeScript Fundamentals', type: 'main', owner: 'Company', status: 'completed', x: 150, y: 300 },
-    { id: 'n4', title: 'Design Patterns', type: 'main', owner: 'Company', status: 'in-progress', x: 150, y: 400 },
-    { id: 'n5', title: 'Testing Best Practices', type: 'main', owner: 'Company', status: 'not-started', x: 150, y: 500 },
-    
-    // Alex's branches
-    { id: 'n6', title: 'React Performance', type: 'branch', owner: 'Alex Rivera', ownerAvatar: user.avatar, status: 'in-progress', x: 350, y: 200, branches: ['n2'] },
-    { id: 'n7', title: 'Custom Hooks Deep Dive', type: 'branch', owner: 'Alex Rivera', ownerAvatar: user.avatar, status: 'completed', x: 350, y: 280, branches: ['n2'] },
-    
-    // Maria's branches
-    { id: 'n8', title: 'React + TS Patterns', type: 'branch', owner: 'Maria Garcia', ownerAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150', status: 'completed', x: 550, y: 250, branches: ['n2', 'n3'] },
-    
-    // James's branch
-    { id: 'n9', title: 'Testing React Components', type: 'branch', owner: 'James Chen', ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150', status: 'in-progress', x: 350, y: 450, branches: ['n4', 'n5'] },
-    
-    // Merged modules
-    { id: 'n10', title: 'Advanced Patterns (Merged)', type: 'merge', owner: 'Alex Rivera', ownerAvatar: user.avatar, status: 'completed', x: 550, y: 400, mergedFrom: 'n8' },
-  ];
+  // Initialize mock branches on mount
+  useEffect(() => {
+    initializeMockBranches(mockModules);
+  }, []);
 
-  const connections: PathConnection[] = [
-    // Main path
-    { from: 'n1', to: 'n2', type: 'main' },
-    { from: 'n2', to: 'n3', type: 'main' },
-    { from: 'n3', to: 'n4', type: 'main' },
-    { from: 'n4', to: 'n5', type: 'main' },
+  // Build graph from actual data
+  const buildGraphFromData = (): { nodes: PathNode[]; connections: PathConnection[] } => {
+    const allModules = [...mockModules];
+    const userModules = loadUserModules(user.id) ?? [];
+    // Get all branches (including from other team members) for the graph
+    const teamBranches = getTeamBranches();
+    const userBranches = getUserBranches(user.id);
     
-    // Alex's branches
-    { from: 'n2', to: 'n6', type: 'branch' },
-    { from: 'n2', to: 'n7', type: 'branch' },
+    // Combine all modules
+    const allData = [...allModules, ...userModules, ...teamBranches];
+    const seen = new Set<string>();
+    const uniqueModules = allData.filter(m => {
+      if (seen.has(m.id)) return false;
+      seen.add(m.id);
+      return true;
+    });
+
+    const nodes: PathNode[] = [];
+    const connections: PathConnection[] = [];
     
-    // Maria's branch
-    { from: 'n2', to: 'n8', type: 'branch' },
-    { from: 'n3', to: 'n8', type: 'branch' },
+    // Layout parameters
+    const MAIN_X = 200;
+    const BRANCH_X_SPACING = 250;
+    const Y_SPACING = 120;
+    let currentY = 100;
     
-    // James's branch
-    { from: 'n4', to: 'n9', type: 'branch' },
-    { from: 'n5', to: 'n9', type: 'branch' },
+    // Find main path modules (non-branched, from mockModules)
+    const mainPathModules = mockModules.filter(m => !m.isBranched && !m.branchId);
+    const mainPathCount = Math.min(mainPathModules.length, 5); // Limit to first 5 for visualization
     
-    // Merge
-    { from: 'n8', to: 'n10', type: 'merge' },
-    { from: 'n4', to: 'n10', type: 'merge' },
-  ];
+    // Create main path nodes
+    const mainPathNodes: PathNode[] = [];
+    mainPathModules.slice(0, mainPathCount).forEach((module, idx) => {
+      const node: PathNode = {
+        id: `main-${module.id}`,
+        title: module.title,
+        type: 'main',
+        owner: 'Company',
+        status: module.progress === 100 ? 'completed' : module.progress > 0 ? 'in-progress' : 'not-started',
+        x: MAIN_X,
+        y: currentY + (idx * Y_SPACING),
+        moduleId: module.id,
+      };
+      mainPathNodes.push(node);
+      nodes.push(node);
+      
+      // Connect to previous main node
+      if (idx > 0) {
+        connections.push({
+          from: mainPathNodes[idx - 1].id,
+          to: node.id,
+          type: 'main',
+        });
+      }
+    });
+    
+    currentY += mainPathCount * Y_SPACING;
+    
+    // Create branch nodes
+    let branchX = MAIN_X + BRANCH_X_SPACING;
+    const branchNodesBySource: Record<string, PathNode[]> = {};
+    
+    teamBranches.forEach((branch, branchIdx) => {
+      const sourceModuleId = branch.sourceModuleId || branch.parentModule || branch.id;
+      const sourceMainNode = mainPathNodes.find(n => n.moduleId === sourceModuleId);
+      
+      if (!sourceMainNode) return;
+      
+      const branchOwner = teamMembers.find(m => m.id === branch.branchOwnerId) || 
+                         { name: branch.createdBy || 'Unknown', avatar: undefined };
+      
+      const branchNode: PathNode = {
+        id: `branch-${branch.branchId || branch.id}`,
+        title: branch.title,
+        type: 'branch',
+        owner: branchOwner.name || 'Unknown',
+        ownerAvatar: branchOwner.avatar,
+        status: branch.progress === 100 ? 'completed' : branch.progress > 0 ? 'in-progress' : 'not-started',
+        x: branchX + (Math.floor(branchIdx / 3) * BRANCH_X_SPACING),
+        y: sourceMainNode.y + ((branchIdx % 3) * 80) - 40,
+        moduleId: branch.id,
+        branchId: branch.branchId,
+      };
+      
+      nodes.push(branchNode);
+      
+      // Connect branch to source (PUSH operation - user created a branch)
+      connections.push({
+        from: sourceMainNode.id,
+        to: branchNode.id,
+        type: 'push',
+        label: `${branchOwner.name} pushed`,
+      });
+      
+      // Track branches by source for potential merges
+      if (!branchNodesBySource[sourceModuleId]) {
+        branchNodesBySource[sourceModuleId] = [];
+      }
+      branchNodesBySource[sourceModuleId].push(branchNode);
+      
+      // Check if this branch was pulled by any user (PULL operation)
+      // Note: We need to check all branches to see if they were pulled
+      // For now, we'll check if current user has pulled this branch
+      const allUserModules = loadUserModules(user.id) ?? [];
+      const pulledInstances = allUserModules.filter(m => m.pulledFrom === branch.branchId);
+      
+      if (pulledInstances.length > 0) {
+        pulledInstances.forEach((pulled, pullIdx) => {
+          // Create a pull node further right to show it's in user's path
+          const pullX = branchNode.x + BRANCH_X_SPACING;
+          const pullNode: PathNode = {
+            id: `pull-${pulled.id}`,
+            title: `${branch.title.substring(0, 30)}${branch.title.length > 30 ? '...' : ''} (Pulled)`,
+            type: 'merge',
+            owner: user.name, // Current user who pulled it
+            ownerAvatar: user.avatar,
+            status: pulled.progress === 100 ? 'completed' : pulled.progress > 0 ? 'in-progress' : 'not-started',
+            x: pullX,
+            y: branchNode.y + (pullIdx * 60),
+            moduleId: pulled.id,
+            mergedFrom: branchNode.id,
+          };
+          
+          nodes.push(pullNode);
+          // PULL operation - user pulled from branch
+          connections.push({
+            from: branchNode.id,
+            to: pullNode.id,
+            type: 'pull',
+            label: `${user.name} pulled`,
+          });
+        });
+      }
+    });
+    
+    return { nodes, connections };
+  };
+
+  // Build graph data - recalculate when user changes
+  const { nodes, connections } = useMemo(() => buildGraphFromData(), [user.id]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,17 +216,23 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
       const member = teamMembers.find(m => m.id === selectedView);
       if (member) {
         filteredNodes = nodes.filter(n => 
-          n.owner === 'Company' || n.owner === member.name
+          n.owner === 'Company' || n.owner.toLowerCase() === member.name.toLowerCase()
         );
       } else if (selectedView === user.id) {
         filteredNodes = nodes.filter(n => 
-          n.owner === 'Company' || n.owner === user.name
+          n.owner === 'Company' || n.owner.toLowerCase() === user.name.toLowerCase()
         );
       }
     }
+    
+    // Also filter connections based on filtered nodes
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredConnections = connections.filter(c => 
+      filteredNodeIds.has(c.from) && filteredNodeIds.has(c.to)
+    );
 
     // Draw connections
-    connections.forEach(conn => {
+    filteredConnections.forEach(conn => {
       const fromNode = filteredNodes.find(n => n.id === conn.from);
       const toNode = filteredNodes.find(n => n.id === conn.to);
       
@@ -131,29 +241,91 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
       ctx.beginPath();
       ctx.moveTo(fromNode.x, fromNode.y);
       
-      if (conn.type === 'branch') {
-        // Draw curved line for branches
-        const midX = (fromNode.x + toNode.x) / 2;
-        const midY = (fromNode.y + toNode.y) / 2;
+      const midX = (fromNode.x + toNode.x) / 2;
+      const midY = (fromNode.y + toNode.y) / 2;
+      
+      if (conn.type === 'push') {
+        // PUSH: Branch creation - curved line going right
         ctx.quadraticCurveTo(midX + 50, midY, toNode.x, toNode.y);
         ctx.strokeStyle = '#a855f7'; // purple
         ctx.setLineDash([5, 5]);
-      } else if (conn.type === 'merge') {
-        // Draw curved line for merges
-        const midX = (fromNode.x + toNode.x) / 2;
-        const midY = (fromNode.y + toNode.y) / 2;
-        ctx.quadraticCurveTo(midX - 50, midY, toNode.x, toNode.y);
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        
+        // Draw arrow at end
+        const angle = Math.atan2(toNode.y - midY, toNode.x - midX);
+        ctx.beginPath();
+        ctx.moveTo(toNode.x, toNode.y);
+        ctx.lineTo(
+          toNode.x - 10 * Math.cos(angle - Math.PI / 6),
+          toNode.y - 10 * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          toNode.x - 10 * Math.cos(angle + Math.PI / 6),
+          toNode.y - 10 * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fillStyle = '#a855f7';
+        ctx.fill();
+        
+        // Draw label
+        if (conn.label) {
+          ctx.fillStyle = '#a855f7';
+          ctx.font = '11px sans-serif';
+          ctx.fillText(conn.label, midX + 60, midY - 5);
+        }
+      } else if (conn.type === 'pull') {
+        // PULL: Pull from branch - curved line going right and down
+        ctx.quadraticCurveTo(midX + 30, midY + 20, toNode.x, toNode.y);
         ctx.strokeStyle = '#22c55e'; // green
-        ctx.setLineDash([5, 3]);
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        
+        // Draw arrow at end
+        const angle = Math.atan2(toNode.y - (midY + 20), toNode.x - midX);
+        ctx.beginPath();
+        ctx.moveTo(toNode.x, toNode.y);
+        ctx.lineTo(
+          toNode.x - 10 * Math.cos(angle - Math.PI / 6),
+          toNode.y - 10 * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          toNode.x - 10 * Math.cos(angle + Math.PI / 6),
+          toNode.y - 10 * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+        
+        // Draw label
+        if (conn.label) {
+          ctx.fillStyle = '#22c55e';
+          ctx.font = '11px sans-serif';
+          ctx.fillText(conn.label, midX + 35, midY + 25);
+        }
+      } else if (conn.type === 'merge') {
+        // MERGE: Merge operation - curved line
+        ctx.quadraticCurveTo(midX - 50, midY, toNode.x, toNode.y);
+        ctx.strokeStyle = '#f59e0b'; // amber/orange
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw label
+        if (conn.label) {
+          ctx.fillStyle = '#f59e0b';
+          ctx.font = '11px sans-serif';
+          ctx.fillText(conn.label, midX - 60, midY - 5);
+        }
       } else {
-        // Straight line for main path
+        // MAIN: Straight line for main path
         ctx.lineTo(toNode.x, toNode.y);
         ctx.strokeStyle = '#3b82f6'; // blue
         ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+        ctx.stroke();
       }
-      
-      ctx.lineWidth = 2;
-      ctx.stroke();
     });
 
     // Draw nodes
@@ -185,7 +357,7 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
       ctx.fill();
     });
 
-  }, [selectedView, hoveredNode]);
+  }, [selectedView, hoveredNode, user, nodes, connections]);
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -197,8 +369,23 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
 
     setMousePos({ x: e.clientX, y: e.clientY });
 
-    // Check if hovering over a node
-    const hoveredNode = nodes.find(node => {
+    // Check if hovering over a node (use the memoized nodes)
+    const currentNodes = nodes;
+    let filteredNodes = currentNodes;
+    if (selectedView !== 'all') {
+      const member = teamMembers.find(m => m.id === selectedView);
+      if (member) {
+        filteredNodes = currentNodes.filter(n => 
+          n.owner === 'Company' || n.owner.toLowerCase() === member.name.toLowerCase()
+        );
+      } else if (selectedView === user.id) {
+        filteredNodes = currentNodes.filter(n => 
+          n.owner === 'Company' || n.owner.toLowerCase() === user.name.toLowerCase()
+        );
+      }
+    }
+    
+    const hoveredNode = filteredNodes.find(node => {
       const distance = Math.sqrt(Math.pow(x - node.x, 2) + Math.pow(y - node.y, 2));
       return distance < 15;
     });
@@ -261,10 +448,14 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-purple-600"></div>
-                  <span>Branch</span>
+                  <span>Push (Branch)</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                  <span>Pull</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-600"></div>
                   <span>Merge</span>
                 </div>
               </div>
