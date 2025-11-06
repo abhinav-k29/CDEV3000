@@ -345,4 +345,232 @@ export function logPullActivity(branchModule: LearningModule, userId: string, us
   });
 }
 
+// Initialize mock branches for team members (for demo purposes)
+export function initializeMockBranches(mockModules: LearningModule[]): void {
+  const INIT_KEY = 'mockBranchesInitialized';
+  
+  // Check if already initialized
+  if (localStorage.getItem(INIT_KEY) === 'true') {
+    return;
+  }
+  
+  try {
+    // Get existing branches
+    const existingBranches = getAllBranches();
+    const existingBranchIds = new Set(existingBranches.map(b => b.branchId));
+    
+    // Maria Garcia (emp-002) - Frontend Developer
+    // Branches: React Advanced Patterns, TypeScript Mastery
+    const mariaBranches: LearningModule[] = [
+      {
+        ...mockModules.find(m => m.id === 'mod-001')!,
+        id: 'branch-maria-react-001',
+        branchId: 'branch-maria-react-001',
+        branchOwnerId: 'emp-002',
+        branchName: 'maria-garcia-react-advanced-patterns',
+        sourceModuleId: 'mod-001',
+        isBranched: true,
+        parentModule: 'mod-001',
+        isPublic: true,
+        progress: 75,
+        chatRoomId: getChatRoomId('mod-001'),
+        createdBy: 'emp-002',
+      },
+      {
+        ...mockModules.find(m => m.id === 'mod-006')!,
+        id: 'branch-maria-typescript-001',
+        branchId: 'branch-maria-typescript-001',
+        branchOwnerId: 'emp-002',
+        branchName: 'maria-garcia-typescript-mastery',
+        sourceModuleId: 'mod-006',
+        isBranched: true,
+        parentModule: 'mod-006',
+        isPublic: true,
+        progress: 60,
+        chatRoomId: getChatRoomId('mod-006'),
+        createdBy: 'emp-002',
+      },
+    ];
+    
+    // James Chen (emp-003) - Full Stack Developer
+    // Branches: Microservices Architecture, Node.js Performance Tuning
+    const jamesBranches: LearningModule[] = [
+      {
+        ...mockModules.find(m => m.id === 'mod-003')!,
+        id: 'branch-james-microservices-001',
+        branchId: 'branch-james-microservices-001',
+        branchOwnerId: 'emp-003',
+        branchName: 'james-chen-microservices-architecture-deep-dive',
+        sourceModuleId: 'mod-003',
+        isBranched: true,
+        parentModule: 'mod-003',
+        isPublic: true,
+        progress: 45,
+        chatRoomId: getChatRoomId('mod-003'),
+        createdBy: 'emp-003',
+      },
+      {
+        ...mockModules.find(m => m.id === 'mod-011')!,
+        id: 'branch-james-nodejs-001',
+        branchId: 'branch-james-nodejs-001',
+        branchOwnerId: 'emp-003',
+        branchName: 'james-chen-node-js-performance-tuning',
+        sourceModuleId: 'mod-011',
+        isBranched: true,
+        parentModule: 'mod-011',
+        isPublic: true,
+        progress: 30,
+        chatRoomId: getChatRoomId('mod-011'),
+        createdBy: 'emp-003',
+      },
+    ];
+    
+    // Sarah Kim (emp-004) - Backend Engineer
+    // Branches: Cloud Architecture with AWS, Kubernetes Essentials
+    const sarahBranches: LearningModule[] = [
+      {
+        ...mockModules.find(m => m.id === 'mod-008')!,
+        id: 'branch-sarah-aws-001',
+        branchId: 'branch-sarah-aws-001',
+        branchOwnerId: 'emp-004',
+        branchName: 'sarah-kim-cloud-architecture-with-aws',
+        sourceModuleId: 'mod-008',
+        isBranched: true,
+        parentModule: 'mod-008',
+        isPublic: true,
+        progress: 55,
+        chatRoomId: getChatRoomId('mod-008'),
+        createdBy: 'emp-004',
+      },
+      {
+        ...mockModules.find(m => m.id === 'mod-009')!,
+        id: 'branch-sarah-k8s-001',
+        branchId: 'branch-sarah-k8s-001',
+        branchOwnerId: 'emp-004',
+        branchName: 'sarah-kim-kubernetes-essentials',
+        sourceModuleId: 'mod-009',
+        isBranched: true,
+        parentModule: 'mod-009',
+        isPublic: true,
+        progress: 80,
+        chatRoomId: getChatRoomId('mod-009'),
+        createdBy: 'emp-004',
+      },
+    ];
+    
+    // David Johnson (emp-005) - UI/UX Engineer
+    // Branches: Design Thinking Foundations, Figma for Developers
+    const davidBranches: LearningModule[] = [
+      {
+        ...mockModules.find(m => m.id === 'mod-014')!,
+        id: 'branch-david-design-001',
+        branchId: 'branch-david-design-001',
+        branchOwnerId: 'emp-005',
+        branchName: 'david-johnson-design-thinking-foundations',
+        sourceModuleId: 'mod-014',
+        isBranched: true,
+        parentModule: 'mod-014',
+        isPublic: true,
+        progress: 90,
+        chatRoomId: getChatRoomId('mod-014'),
+        createdBy: 'emp-005',
+      },
+      {
+        ...mockModules.find(m => m.id === 'mod-015')!,
+        id: 'branch-david-figma-001',
+        branchId: 'branch-david-figma-001',
+        branchOwnerId: 'emp-005',
+        branchName: 'david-johnson-figma-for-developers',
+        sourceModuleId: 'mod-015',
+        isBranched: true,
+        parentModule: 'mod-015',
+        isPublic: true,
+        progress: 100,
+        chatRoomId: getChatRoomId('mod-015'),
+        createdBy: 'emp-005',
+      },
+    ];
+    
+    // Combine all branches
+    const allMockBranches = [
+      ...mariaBranches,
+      ...jamesBranches,
+      ...sarahBranches,
+      ...davidBranches,
+    ];
+    
+    // Filter out branches that already exist
+    const newBranches = allMockBranches.filter(b => !existingBranchIds.has(b.branchId!));
+    
+    if (newBranches.length > 0) {
+      // Save branches to storage
+      const updatedBranches = [...existingBranches, ...newBranches];
+      localStorage.setItem(BRANCHES_KEY, JSON.stringify(updatedBranches));
+      
+      // Save to each user's modules
+      mariaBranches.forEach(branch => {
+        if (!existingBranchIds.has(branch.branchId!)) {
+          saveUserModules([branch, ...(loadUserModules('emp-002') ?? [])], 'emp-002');
+        }
+      });
+      
+      jamesBranches.forEach(branch => {
+        if (!existingBranchIds.has(branch.branchId!)) {
+          saveUserModules([branch, ...(loadUserModules('emp-003') ?? [])], 'emp-003');
+        }
+      });
+      
+      sarahBranches.forEach(branch => {
+        if (!existingBranchIds.has(branch.branchId!)) {
+          saveUserModules([branch, ...(loadUserModules('emp-004') ?? [])], 'emp-004');
+        }
+      });
+      
+      davidBranches.forEach(branch => {
+        if (!existingBranchIds.has(branch.branchId!)) {
+          saveUserModules([branch, ...(loadUserModules('emp-005') ?? [])], 'emp-005');
+        }
+      });
+      
+      // Log activities for each branch creation
+      newBranches.forEach(branch => {
+        const ownerName = branch.branchOwnerId === 'emp-002' ? 'Maria Garcia' :
+                         branch.branchOwnerId === 'emp-003' ? 'James Chen' :
+                         branch.branchOwnerId === 'emp-004' ? 'Sarah Kim' :
+                         branch.branchOwnerId === 'emp-005' ? 'David Johnson' : 'Unknown';
+        logBranchActivity(branch, branch.branchOwnerId!, ownerName);
+      });
+    }
+    
+    // Mark as initialized
+    localStorage.setItem(INIT_KEY, 'true');
+  } catch (error) {
+    console.error('Error initializing mock branches:', error);
+  }
+}
+
+// Reset entire demo - clears all stored data
+export function resetDemoData(): void {
+  try {
+    // Clear all user-specific modules for all team members
+    const teamMemberIds = ['emp-001', 'emp-002', 'emp-003', 'emp-004', 'emp-005'];
+    teamMemberIds.forEach(userId => {
+      localStorage.removeItem(getUserModulesKey(userId));
+      localStorage.removeItem(getUserBranchesKey(userId));
+    });
+    
+    // Clear shared data
+    localStorage.removeItem(BRANCHES_KEY);
+    localStorage.removeItem(CHAT_ROOMS_KEY);
+    localStorage.removeItem(ACTIVITIES_KEY);
+    
+    // Clear initialization flag so mock branches can be recreated
+    localStorage.removeItem('mockBranchesInitialized');
+    
+    // Reload the page to refresh all state
+    window.location.reload();
+  } catch (error) {
+    console.error('Error resetting demo data:', error);
+  }
+}
 

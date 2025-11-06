@@ -9,7 +9,7 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { teamModules, teamMembers } from './mockData';
-import { addModuleToUserPath, pullFromBranch, createBranch, getTeamBranches, getUserBranches, getChatRoomMessages, addChatMessage, ChatMessage as StorageChatMessage, getActivities, logPullActivity, logActivity, ActivityItem } from '../storage';
+import { addModuleToUserPath, pullFromBranch, createBranch, getTeamBranches, getUserBranches, getChatRoomMessages, addChatMessage, ChatMessage as StorageChatMessage, getActivities, logPullActivity, logActivity, ActivityItem, initializeMockBranches, loadUserModules } from '../storage';
 import { LearningPathGraph } from './LearningPathGraph';
 import { mockModules } from './mockData';
 
@@ -30,6 +30,17 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   const [moduleChatMessages, setModuleChatMessages] = useState<Record<string, StorageChatMessage[]>>({});
   const [newChatMessage, setNewChatMessage] = useState('');
   const [activities, setActivities] = useState<ActivityItem[]>(() => getActivities(20));
+  const [userModules, setUserModules] = useState<LearningModule[]>(() => loadUserModules(user.id) ?? []);
+  
+  // Initialize mock branches for other team members on mount
+  useEffect(() => {
+    initializeMockBranches(mockModules);
+    // Refresh branches and user modules after initialization
+    setTeamBranches(getTeamBranches(user.id));
+    setUserBranches(getUserBranches(user.id));
+    setUserModules(loadUserModules(user.id) ?? []);
+  }, [user.id]);
+  
   const [chatMessages, setChatMessages] = useState<StorageChatMessage[]>([
     {
       id: 'msg-1',
@@ -87,14 +98,17 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
     }
   }, [selectedModule, selectedBranch]);
 
-  // Refresh activities periodically and when activities change
+  // Refresh activities and branches periodically
   useEffect(() => {
     const interval = setInterval(() => {
       setActivities(getActivities(20));
+      setTeamBranches(getTeamBranches(user.id));
+      setUserBranches(getUserBranches(user.id));
+      setUserModules(loadUserModules(user.id) ?? []);
     }, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [user.id]);
 
   const handleBranch = (module: LearningModule) => {
     // Check if user already has a branch from this module
@@ -123,12 +137,37 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
   };
 
   const handlePull = (branchModule: LearningModule) => {
+    // Check if user already has this module or its source module in their pathway
+    const currentUserModules = loadUserModules(user.id) ?? [];
+    const sourceModuleId = branchModule.sourceModuleId || branchModule.parentModule;
+    
+    // Check if user already has the source module
+    const hasSourceModule = currentUserModules.some(m => 
+      m.id === sourceModuleId || 
+      m.sourceModuleId === sourceModuleId || 
+      m.parentModule === sourceModuleId
+    );
+    
+    // Check if user already has a module with the same title (from a previous pull)
+    const hasSameModule = currentUserModules.some(m => 
+      m.title === branchModule.title && 
+      (m.pulledFrom === branchModule.branchId || m.sourceModuleId === sourceModuleId)
+    );
+    
+    if (hasSourceModule || hasSameModule) {
+      alert(`You already have "${branchModule.title}" (or its source module) in your learning pathway. You cannot pull a module you already have.`);
+      return;
+    }
+    
     const pulledModule = pullFromBranch(branchModule, user.id);
-    addModuleToUserPath(pulledModule);
+    addModuleToUserPath(pulledModule, user.id);
     // Log activity with proper user name
     logPullActivity(branchModule, user.id, user.name);
-    // Refresh activities
+    // Refresh activities and branches
     setActivities(getActivities(20));
+    setTeamBranches(getTeamBranches(user.id));
+    setUserBranches(getUserBranches(user.id));
+    setUserModules(loadUserModules(user.id) ?? []);
     alert(`Pulled "${branchModule.title}" from ${teamMembers.find(m => m.id === branchModule.branchOwnerId)?.name || 'team member'}'s branch into your learning path!`);
   };
 
@@ -498,16 +537,33 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                           </div>
 
                           <div className="flex gap-2">
-                            {!isOwnBranch && (
-                              <Button
-                                variant="default"
-                                className="flex-1"
-                                onClick={() => handlePull(branch)}
-                              >
-                                <GitMerge className="w-4 h-4 mr-2" />
-                                Pull to My Path
-                              </Button>
-                            )}
+                            {!isOwnBranch && (() => {
+                              // Check if user already has this module or its source module
+                              const sourceModuleId = branch.sourceModuleId || branch.parentModule;
+                              const hasSourceModule = userModules.some(m => 
+                                m.id === sourceModuleId || 
+                                m.sourceModuleId === sourceModuleId || 
+                                m.parentModule === sourceModuleId
+                              );
+                              const hasSameModule = userModules.some(m => 
+                                m.title === branch.title && 
+                                (m.pulledFrom === branch.branchId || m.sourceModuleId === sourceModuleId)
+                              );
+                              const alreadyHasModule = hasSourceModule || hasSameModule;
+                              
+                              return (
+                                <Button
+                                  variant="default"
+                                  className="flex-1"
+                                  onClick={() => handlePull(branch)}
+                                  disabled={alreadyHasModule}
+                                  title={alreadyHasModule ? 'You already have this module in your learning pathway' : 'Pull this module into your learning pathway'}
+                                >
+                                  <GitMerge className="w-4 h-4 mr-2" />
+                                  {alreadyHasModule ? 'Already in My Path' : 'Pull to My Path'}
+                                </Button>
+                              );
+                            })()}
                             <Button
                               variant="outline"
                               onClick={() => {

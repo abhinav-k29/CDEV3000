@@ -14,7 +14,7 @@ import {
 import { User, LearningModule } from '../App';
 import { teamMembers, mockModules } from './mockData';
 import { loadUserModules } from '../storage';
-import { getTeamBranches, getUserBranches } from '../storage';
+import { getTeamBranches, getUserBranches, initializeMockBranches } from '../storage';
 
 interface LearningPathGraphProps {
   user: User;
@@ -49,10 +49,16 @@ export function LearningPathGraph({ user, onClose }: LearningPathGraphProps) {
   const [hoveredNode, setHoveredNode] = useState<PathNode | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  // Initialize mock branches on mount
+  useEffect(() => {
+    initializeMockBranches(mockModules);
+  }, []);
+
   // Build graph from actual data
   const buildGraphFromData = (): { nodes: PathNode[]; connections: PathConnection[] } => {
     const allModules = [...mockModules];
     const userModules = loadUserModules(user.id) ?? [];
+    // Get all branches (including from other team members) for the graph
     const teamBranches = getTeamBranches();
     const userBranches = getUserBranches(user.id);
     

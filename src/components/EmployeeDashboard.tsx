@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { mockModules, teamModules } from './mockData';
-import { addModuleToUserPath, loadUserModules, removeModuleFromUserPath, resetCompletedToInProgress, getUserBranches, getTeamBranches } from '../storage';
+import { addModuleToUserPath, loadUserModules, removeModuleFromUserPath, resetCompletedToInProgress, getUserBranches, getTeamBranches, resetDemoData } from '../storage';
 import { GenerateModuleDialog } from './GenerateModuleDialog';
 import { HeroBanner } from './dashboard/HeroBanner';
 import { CarouselSection } from './dashboard/CarouselSection';
@@ -610,17 +610,19 @@ export function EmployeeDashboard({ user, onPlayModule }: EmployeeDashboardProps
         </Card>
       )}
 
-      {/* Reset Completed Button at Bottom */}
+      {/* Reset Demo Button at Bottom */}
       <div className="mt-8 flex justify-end">
         <Button
           variant="outline"
           onClick={() => {
-            resetCompletedToInProgress(user.id);
-            setModules(prev => prev.map(m => (m.progress === 100 ? { ...m, progress: 80 } : m)));
+            if (confirm('This will reset the entire demo - all modules, branches, chat messages, and activities will be cleared. Are you sure?')) {
+              resetDemoData();
+            }
           }}
-          title="Move all completed to in progress"
+          title="Reset entire demo - clears all stored data"
+          className="text-red-600 hover:text-red-700 hover:bg-red-50"
         >
-          Reset Completed
+          Reset Demo
         </Button>
       </div>
 

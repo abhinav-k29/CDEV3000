@@ -49,9 +49,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </div>
               
               <div className="flex gap-8 pt-4">
-                <div>
-                  <div className="text-3xl">Developed for Companies</div>
-                </div>
+                
                 <div>
                   <div className="text-3xl">6k+</div>
                   <div className="text-blue-200 text-sm">Active Learners</div>
@@ -161,9 +159,6 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* CTA Section */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-12 text-white text-center">
           <h2 className="text-3xl lg:text-4xl mb-4">Ready to Transform Your Team's Learning?</h2>
-          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Join thousands of companies using our platform to upskill their workforce
-          </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Button 
               size="lg"
