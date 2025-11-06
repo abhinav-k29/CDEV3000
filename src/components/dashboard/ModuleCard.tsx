@@ -52,4 +52,3 @@ export function ModuleCard({ module, onOpen, onRemove, canRemove }: ModuleCardPr
   );
 }
 
-
