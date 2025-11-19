@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { GitBranch, GitMerge, MessageSquare, Users, Star, Eye, Play, User as UserIcon, Send, Network, Clock, CheckCircle2 } from 'lucide-react';
+import { useState } from 'react';
+import { GitBranch, GitMerge, MessageSquare, Users, Star, Eye, Play, User as UserIcon, Send, Network } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -9,39 +9,29 @@ import { Textarea } from './ui/textarea';
 import { Input } from './ui/input';
 import { User, LearningModule } from '../App';
 import { teamModules, teamMembers } from './mockData';
-import { addModuleToUserPath, pullFromBranch, createBranch, getTeamBranches, getUserBranches, getChatRoomMessages, addChatMessage, ChatMessage as StorageChatMessage, getActivities, logPullActivity, logActivity, ActivityItem, initializeMockBranches, loadUserModules } from '../storage';
 import { LearningPathGraph } from './LearningPathGraph';
-import { mockModules } from './mockData';
+import { SeniorityBadge } from './SeniorityBadge';
 
 interface TeamCollaborationProps {
   user: User;
   onPlayModule: (module: LearningModule) => void;
 }
 
-// Using ChatMessage from storage.ts - keeping interface for compatibility
+interface ChatMessage {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  message: string;
+  timestamp: Date;
+  userYearsAtCompany?: number;
+}
 
 export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps) {
-  const [modules, setModules] = useState<LearningModule[]>(() => [...teamModules, ...mockModules]);
+  const [modules] = useState<LearningModule[]>(teamModules);
   const [selectedModule, setSelectedModule] = useState<LearningModule | null>(null);
   const [newComment, setNewComment] = useState('');
-  const [teamBranches, setTeamBranches] = useState<LearningModule[]>(() => getTeamBranches(user.id));
-  const [userBranches, setUserBranches] = useState<LearningModule[]>(() => getUserBranches(user.id));
-  const [selectedBranch, setSelectedBranch] = useState<LearningModule | null>(null);
-  const [moduleChatMessages, setModuleChatMessages] = useState<Record<string, StorageChatMessage[]>>({});
-  const [newChatMessage, setNewChatMessage] = useState('');
-  const [activities, setActivities] = useState<ActivityItem[]>(() => getActivities(20));
-  const [userModules, setUserModules] = useState<LearningModule[]>(() => loadUserModules(user.id) ?? []);
-  
-  // Initialize mock branches for other team members on mount
-  useEffect(() => {
-    initializeMockBranches(mockModules);
-    // Refresh branches and user modules after initialization
-    setTeamBranches(getTeamBranches(user.id));
-    setUserBranches(getUserBranches(user.id));
-    setUserModules(loadUserModules(user.id) ?? []);
-  }, [user.id]);
-  
-  const [chatMessages, setChatMessages] = useState<StorageChatMessage[]>([
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-1',
       userId: 'emp-002',
@@ -49,6 +39,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
       userAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150',
       message: 'Hey team! Just finished the React Advanced Patterns module. Really insightful!',
       timestamp: new Date('2024-10-29T09:30:00'),
+      userYearsAtCompany: 2,
     },
     {
       id: 'msg-2',
@@ -57,6 +48,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
       userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
       message: 'Nice! Did you get to the custom hooks section? That part was really helpful for our current project.',
       timestamp: new Date('2024-10-29T09:45:00'),
+      userYearsAtCompany: 4,
     },
     {
       id: 'msg-3',
@@ -65,6 +57,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
       userAvatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150',
       message: 'Yes! I actually created a branch of that module with some additional examples from our codebase.',
       timestamp: new Date('2024-10-29T10:00:00'),
+      userYearsAtCompany: 2,
     },
     {
       id: 'msg-4',
@@ -73,6 +66,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
       userAvatar: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=150',
       message: 'That sounds great! Can you share that branch? Would love to check it out.',
       timestamp: new Date('2024-10-29T10:15:00'),
+      userYearsAtCompany: 5,
     },
     {
       id: 'msg-5',
@@ -81,142 +75,18 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
       userAvatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150',
       message: 'Starting the Microservices Architecture module today. Anyone want to pair up for the exercises?',
       timestamp: new Date('2024-10-30T08:00:00'),
+      userYearsAtCompany: 3,
     },
   ]);
   const [newMessage, setNewMessage] = useState('');
   const [showGraph, setShowGraph] = useState(false);
 
-  // Load chat messages for a module when selected (from either Team Modules or Browse Branches)
-  useEffect(() => {
-    const moduleToCheck = selectedModule || selectedBranch;
-    if (moduleToCheck?.chatRoomId) {
-      const messages = getChatRoomMessages(moduleToCheck.chatRoomId);
-      setModuleChatMessages(prev => ({
-        ...prev,
-        [moduleToCheck.chatRoomId!]: messages,
-      }));
-    }
-  }, [selectedModule, selectedBranch]);
-
-  // Refresh activities and branches periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActivities(getActivities(20));
-      setTeamBranches(getTeamBranches(user.id));
-      setUserBranches(getUserBranches(user.id));
-      setUserModules(loadUserModules(user.id) ?? []);
-    }, 5000); // Refresh every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [user.id]);
-
   const handleBranch = (module: LearningModule) => {
-    // Check if user already has a branch from this module
-    const existingBranch = userBranches.find(
-      b => b.sourceModuleId === module.id || b.parentModule === module.id
-    );
-    
-    if (existingBranch) {
-      alert(`You have already created a branch from "${module.title}". Branch name: "${existingBranch.branchName}"`);
-      return;
-    }
-    
-    const branchedModule = createBranch(module, user.id, user.name);
-    
-    if (!branchedModule) {
-      alert(`Unable to create branch. You may have already branched this module.`);
-      return;
-    }
-    
-    setUserBranches(prev => [...prev, branchedModule]);
-    setTeamBranches(prev => [...prev, branchedModule]);
-    setModules(prev => [...prev, branchedModule]);
-    // Refresh activities
-    setActivities(getActivities(20));
-    alert(`Created branch "${branchedModule.branchName}" of "${module.title}"!`);
-  };
-
-  const handlePull = (branchModule: LearningModule) => {
-    // Check if user already has this module or its source module in their pathway
-    const currentUserModules = loadUserModules(user.id) ?? [];
-    const sourceModuleId = branchModule.sourceModuleId || branchModule.parentModule;
-    
-    // Check if user already has the source module
-    const hasSourceModule = currentUserModules.some(m => 
-      m.id === sourceModuleId || 
-      m.sourceModuleId === sourceModuleId || 
-      m.parentModule === sourceModuleId
-    );
-    
-    // Check if user already has a module with the same title (from a previous pull)
-    const hasSameModule = currentUserModules.some(m => 
-      m.title === branchModule.title && 
-      (m.pulledFrom === branchModule.branchId || m.sourceModuleId === sourceModuleId)
-    );
-    
-    if (hasSourceModule || hasSameModule) {
-      alert(`You already have "${branchModule.title}" (or its source module) in your learning pathway. You cannot pull a module you already have.`);
-      return;
-    }
-    
-    const pulledModule = pullFromBranch(branchModule, user.id);
-    addModuleToUserPath(pulledModule, user.id);
-    // Log activity with proper user name
-    logPullActivity(branchModule, user.id, user.name);
-    // Refresh activities and branches
-    setActivities(getActivities(20));
-    setTeamBranches(getTeamBranches(user.id));
-    setUserBranches(getUserBranches(user.id));
-    setUserModules(loadUserModules(user.id) ?? []);
-    alert(`Pulled "${branchModule.title}" from ${teamMembers.find(m => m.id === branchModule.branchOwnerId)?.name || 'team member'}'s branch into your learning path!`);
+    alert(`Creating a branch of "${module.title}" to customize for your learning path...`);
   };
 
   const handleMerge = (module: LearningModule) => {
-    // For non-branched modules, just add to path
-    if (!module.branchId) {
-      addModuleToUserPath(module);
-      alert(`Added "${module.title}" to your learning path. Check your dashboard.`);
-    } else {
-      // For branched modules, use pull functionality
-      handlePull(module);
-    }
-  };
-
-  const handleAddModuleChatMessage = () => {
-    if (!newChatMessage.trim() || !selectedModule?.chatRoomId) return;
-    
-    const message: StorageChatMessage = {
-      id: `msg-${Date.now()}`,
-      userId: user.id,
-      userName: user.name,
-      userAvatar: user.avatar,
-      message: newChatMessage,
-      timestamp: new Date(),
-    };
-    
-    addChatMessage(selectedModule.chatRoomId, message);
-    
-    // Log comment activity
-    logActivity({
-      type: 'comment',
-      userId: user.id,
-      userName: user.name,
-      userAvatar: user.avatar,
-      targetModuleId: selectedModule.id,
-      targetModuleTitle: selectedModule.title,
-    });
-    
-    setModuleChatMessages(prev => ({
-      ...prev,
-      [selectedModule.chatRoomId!]: [
-        ...(prev[selectedModule.chatRoomId!] || []),
-        message,
-      ],
-    }));
-    
-    // Refresh activities
-    setActivities(getActivities(20));
-    setNewChatMessage('');
+    alert(`Merging "${module.title}" into your learning path...`);
   };
 
   const handleAddComment = () => {
@@ -235,6 +105,7 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
         userAvatar: user.avatar,
         message: newMessage,
         timestamp: new Date(),
+        userYearsAtCompany: user.yearsAtCompany,
       };
       setChatMessages([...chatMessages, message]);
       setNewMessage('');
@@ -279,7 +150,6 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
           <Tabs defaultValue="team-modules">
             <TabsList>
               <TabsTrigger value="team-modules">Team Modules</TabsTrigger>
-              <TabsTrigger value="browse-branches">Browse Branches</TabsTrigger>
               <TabsTrigger value="activity">Recent Activity</TabsTrigger>
               <TabsTrigger value="chat">Team Chat</TabsTrigger>
             </TabsList>
@@ -354,23 +224,9 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                         variant="outline"
                         className="flex-1"
                         onClick={() => handleBranch(module)}
-                        disabled={userBranches.some(
-                          b => b.sourceModuleId === module.id || b.parentModule === module.id
-                        )}
-                        title={
-                          userBranches.some(
-                            b => b.sourceModuleId === module.id || b.parentModule === module.id
-                          )
-                            ? 'You already have a branch from this module'
-                            : 'Create a branch from this module'
-                        }
                       >
                         <GitBranch className="w-4 h-4 mr-2" />
-                        {userBranches.some(
-                          b => b.sourceModuleId === module.id || b.parentModule === module.id
-                        )
-                          ? 'Already Branched'
-                          : 'Branch'}
+                        Branch
                       </Button>
                       <Button
                         variant="outline"
@@ -396,63 +252,40 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                           Discussion
                         </h4>
 
-                        {/* Module Chat Room - Shared across all users with same source module */}
-                        {selectedModule.chatRoomId && (
-                          <>
-                            <div className="mb-2 text-xs text-slate-500">
-                              💬 Chat room for all users learning this module
-                            </div>
-                            {moduleChatMessages[selectedModule.chatRoomId] && moduleChatMessages[selectedModule.chatRoomId].length > 0 ? (
-                              <div className="space-y-3 max-h-60 overflow-y-auto">
-                                {moduleChatMessages[selectedModule.chatRoomId].map(msg => {
-                                  const isCurrentUser = msg.userId === user.id;
-                                  return (
-                                    <div key={msg.id} className={`flex gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                                      <Avatar className="w-8 h-8 flex-shrink-0">
-                                        <AvatarImage src={msg.userAvatar} />
-                                        <AvatarFallback>{msg.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                                      </Avatar>
-                                      <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className="text-sm">{isCurrentUser ? 'You' : msg.userName}</span>
-                                          <span className="text-xs text-slate-500">
-                                            {new Date(msg.timestamp).toLocaleString()}
-                                          </span>
-                                        </div>
-                                        <div className={`inline-block px-3 py-2 rounded-lg ${
-                                          isCurrentUser 
-                                            ? 'bg-blue-600 text-white' 
-                                            : 'bg-slate-100 text-slate-900'
-                                        }`}>
-                                          <p className="text-sm break-words">{msg.message}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                        {module.comments && module.comments.length > 0 ? (
+                          <div className="space-y-3">
+                            {module.comments.map(comment => (
+                              <div key={comment.id} className="flex gap-3 p-3 bg-slate-50 rounded-lg">
+                                <Avatar className="w-8 h-8 flex-shrink-0">
+                                  <AvatarFallback>{comment.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-sm">{comment.userName}</span>
+                                    <span className="text-xs text-slate-500">
+                                      {new Date(comment.timestamp).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-slate-700">{comment.text}</p>
+                                </div>
                               </div>
-                            ) : (
-                              <p className="text-sm text-slate-500 text-center py-4">No messages yet. Be the first to share your thoughts!</p>
-                            )}
-
-                            <div className="flex gap-2">
-                              <Input
-                                placeholder="Type a message..."
-                                value={newChatMessage}
-                                onChange={(e) => setNewChatMessage(e.target.value)}
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleAddModuleChatMessage();
-                                  }
-                                }}
-                              />
-                              <Button onClick={handleAddModuleChatMessage} disabled={!newChatMessage.trim()}>
-                                <Send className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 text-center py-4">No comments yet. Be the first to share your thoughts!</p>
                         )}
+
+                        <div className="flex gap-2">
+                          <Textarea
+                            placeholder="Add a comment..."
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            rows={2}
+                          />
+                          <Button onClick={handleAddComment} disabled={!newComment.trim()}>
+                            Comment
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -460,282 +293,46 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
               ))}
             </TabsContent>
 
-            <TabsContent value="browse-branches" className="space-y-4 mt-6">
-              <div className="mb-4">
-                <p className="text-sm text-slate-600">
-                  Browse and pull modules from your team members' branches. Each pull creates an independent copy in your learning path.
-                </p>
-              </div>
-              
-              {teamBranches.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center">
-                    <GitBranch className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                    <p className="text-slate-600">No branches available yet. Create one by branching a module!</p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {teamBranches.map(branch => {
-                    const branchOwner = teamMembers.find(m => m.id === branch.branchOwnerId);
-                    const isOwnBranch = branch.branchOwnerId === user.id;
-                    return (
-                      <Card key={branch.branchId} className="hover:shadow-md transition-shadow">
-                        <CardHeader>
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Badge variant="outline" className="text-purple-600 border-purple-600">
-                                  <GitBranch className="w-3 h-3 mr-1" />
-                                  {branch.branchName}
-                                </Badge>
-                                {isOwnBranch && (
-                                  <Badge variant="secondary">Your Branch</Badge>
-                                )}
-                                <Badge variant="secondary">{branch.category}</Badge>
-                              </div>
-                              <CardTitle className="text-xl mb-2">{branch.title}</CardTitle>
-                              <CardDescription>{branch.description}</CardDescription>
-                              
-                              <div className="flex items-center gap-4 mt-3 text-sm text-slate-600">
-                                {branchOwner && (
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="w-6 h-6">
-                                      <AvatarImage src={branchOwner.avatar} />
-                                      <AvatarFallback>{branchOwner.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                                    </Avatar>
-                                    <span>Created by {branchOwner.name}</span>
-                                  </div>
-                                )}
-                                {branch.sourceModuleId && (
-                                  <div className="text-xs text-slate-500">
-                                    Source: {modules.find(m => m.id === branch.sourceModuleId)?.title || 'Unknown module'}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </CardHeader>
-
-                        <CardContent className="space-y-4">
-                          <div className="flex flex-wrap gap-2">
-                            {branch.tags.map(tag => (
-                              <Badge key={tag} variant="outline">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
-                              {branch.duration} min
-                            </div>
-                            <Badge variant="outline" className="capitalize">
-                              {branch.difficulty}
-                            </Badge>
-                          </div>
-
-                          <div className="flex gap-2">
-                            {!isOwnBranch && (() => {
-                              // Check if user already has this module or its source module
-                              const sourceModuleId = branch.sourceModuleId || branch.parentModule;
-                              const hasSourceModule = userModules.some(m => 
-                                m.id === sourceModuleId || 
-                                m.sourceModuleId === sourceModuleId || 
-                                m.parentModule === sourceModuleId
-                              );
-                              const hasSameModule = userModules.some(m => 
-                                m.title === branch.title && 
-                                (m.pulledFrom === branch.branchId || m.sourceModuleId === sourceModuleId)
-                              );
-                              const alreadyHasModule = hasSourceModule || hasSameModule;
-                              
-                              return (
-                                <Button
-                                  variant="default"
-                                  className="flex-1"
-                                  onClick={() => handlePull(branch)}
-                                  disabled={alreadyHasModule}
-                                  title={alreadyHasModule ? 'You already have this module in your learning pathway' : 'Pull this module into your learning pathway'}
-                                >
-                                  <GitMerge className="w-4 h-4 mr-2" />
-                                  {alreadyHasModule ? 'Already in My Path' : 'Pull to My Path'}
-                                </Button>
-                              );
-                            })()}
-                            <Button
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedModule(selectedModule?.id === branch.id ? null : branch);
-                                setSelectedBranch(selectedBranch?.id === branch.id ? null : branch);
-                              }}
-                            >
-                              <MessageSquare className="w-4 h-4 mr-2" />
-                              {selectedModule?.id === branch.id ? 'Hide Chat' : 'View & Chat'}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              onClick={() => onPlayModule(branch)}
-                            >
-                              <Play className="w-4 h-4 mr-2" />
-                              View Module
-                            </Button>
-                          </div>
-
-                          {/* Chat Section */}
-                          {selectedModule?.id === branch.id && (
-                            <div className="border-t pt-4 space-y-4">
-                              <h4 className="flex items-center gap-2">
-                                <MessageSquare className="w-4 h-4" />
-                                Discussion
-                              </h4>
-
-                              {/* Module Chat Room - Shared across all users with same source module */}
-                              {branch.chatRoomId && (
-                                <>
-                                  <div className="mb-2 text-xs text-slate-500">
-                                    💬 Chat room for all users learning this module
-                                  </div>
-                                  {moduleChatMessages[branch.chatRoomId] && moduleChatMessages[branch.chatRoomId].length > 0 ? (
-                                    <div className="space-y-3 max-h-60 overflow-y-auto">
-                                      {moduleChatMessages[branch.chatRoomId].map(msg => {
-                                        const isCurrentUser = msg.userId === user.id;
-                                        return (
-                                          <div key={msg.id} className={`flex gap-3 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
-                                            <Avatar className="w-8 h-8 flex-shrink-0">
-                                              <AvatarImage src={msg.userAvatar} />
-                                              <AvatarFallback>{msg.userName.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                                            </Avatar>
-                                            <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
-                                              <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-sm">{isCurrentUser ? 'You' : msg.userName}</span>
-                                                <span className="text-xs text-slate-500">
-                                                  {new Date(msg.timestamp).toLocaleString()}
-                                                </span>
-                                              </div>
-                                              <div className={`inline-block px-3 py-2 rounded-lg ${
-                                                isCurrentUser 
-                                                  ? 'bg-blue-600 text-white' 
-                                                  : 'bg-slate-100 text-slate-900'
-                                              }`}>
-                                                <p className="text-sm break-words">{msg.message}</p>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-slate-500 text-center py-4">No messages yet. Be the first to share your thoughts!</p>
-                                  )}
-
-                                  <div className="flex gap-2">
-                                    <Input
-                                      placeholder="Type a message..."
-                                      value={newChatMessage}
-                                      onChange={(e) => setNewChatMessage(e.target.value)}
-                                      onKeyPress={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                          e.preventDefault();
-                                          handleAddModuleChatMessage();
-                                        }
-                                      }}
-                                    />
-                                    <Button onClick={handleAddModuleChatMessage} disabled={!newChatMessage.trim()}>
-                                      <Send className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </>
-                              )}
-                              {!branch.chatRoomId && (
-                                <p className="text-sm text-slate-500 text-center py-4">
-                                  Chat room not available for this branch.
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-              )}
-            </TabsContent>
-
             <TabsContent value="activity" className="space-y-4 mt-6">
               <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>Team activity across all learning modules and branches</CardDescription>
-                </CardHeader>
                 <CardContent className="p-6">
-                  {activities.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <p>No activity yet. Start branching or pulling modules to see activity!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {activities.map(activity => {
-                        const getIcon = () => {
-                          switch (activity.type) {
-                            case 'branch':
-                              return <GitBranch className="w-4 h-4 text-purple-600" />;
-                            case 'pull':
-                              return <GitMerge className="w-4 h-4 text-green-600" />;
-                            case 'comment':
-                              return <MessageSquare className="w-4 h-4 text-blue-600" />;
-                            case 'complete':
-                              return <CheckCircle2 className="w-4 h-4 text-green-600" />;
-                            default:
-                              return <Star className="w-4 h-4 text-yellow-600" />;
-                          }
-                        };
-
-                        const getAction = () => {
-                          switch (activity.type) {
-                            case 'branch':
-                              return 'branched';
-                            case 'pull':
-                              return 'pulled';
-                            case 'merge':
-                              return 'merged';
-                            case 'comment':
-                              return 'commented on';
-                            case 'complete':
-                              return 'completed';
-                            default:
-                              return activity.type;
-                          }
-                        };
-
-                        const formatTime = (timestamp: Date) => {
-                          const now = new Date();
-                          const diff = now.getTime() - timestamp.getTime();
-                          const minutes = Math.floor(diff / 60000);
-                          const hours = Math.floor(minutes / 60);
-                          const days = Math.floor(hours / 24);
-
-                          if (minutes < 1) return 'just now';
-                          if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
-                          if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-                          if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-                          return timestamp.toLocaleDateString();
-                        };
-
-                        return (
-                          <ActivityItem
-                            key={activity.id}
-                            icon={getIcon()}
-                            user={activity.userName}
-                            action={getAction()}
-                            target={activity.targetModuleTitle || 'Unknown Module'}
-                            time={formatTime(activity.timestamp)}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div className="space-y-6">
+                    <ActivityItem
+                      icon={<GitBranch className="w-4 h-4 text-purple-600" />}
+                      user="Maria Garcia"
+                      action="branched"
+                      target="React Advanced Patterns"
+                      time="2 hours ago"
+                    />
+                    <ActivityItem
+                      icon={<MessageSquare className="w-4 h-4 text-blue-600" />}
+                      user="James Chen"
+                      action="commented on"
+                      target="React Advanced Patterns"
+                      time="5 hours ago"
+                    />
+                    <ActivityItem
+                      icon={<GitMerge className="w-4 h-4 text-green-600" />}
+                      user="Sarah Kim"
+                      action="merged"
+                      target="Microservices Testing Strategies"
+                      time="1 day ago"
+                    />
+                    <ActivityItem
+                      icon={<Star className="w-4 h-4 text-yellow-600" />}
+                      user="David Johnson"
+                      action="starred"
+                      target="Design Systems & Component Libraries"
+                      time="1 day ago"
+                    />
+                    <ActivityItem
+                      icon={<GitBranch className="w-4 h-4 text-purple-600" />}
+                      user="Alex Rivera"
+                      action="created"
+                      target="TypeScript Best Practices"
+                      time="2 days ago"
+                    />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -768,10 +365,13 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                         </Avatar>
                         
                         <div className={`flex-1 ${isCurrentUser ? 'text-right' : ''}`}>
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className={`flex items-center gap-2 mb-1 ${isCurrentUser ? 'justify-end' : ''}`}>
                             <span className={`text-sm ${isCurrentUser ? 'order-2' : ''}`}>
                               {isCurrentUser ? 'You' : msg.userName}
                             </span>
+                            {!isCurrentUser && msg.userYearsAtCompany && (
+                              <SeniorityBadge years={msg.userYearsAtCompany} variant="inline" />
+                            )}
                             <span className="text-xs text-slate-500">
                               {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
@@ -830,7 +430,12 @@ export function TeamCollaboration({ user, onPlayModule }: TeamCollaborationProps
                     <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate">{member.name}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm truncate">{member.name}</span>
+                      {member.yearsAtCompany && (
+                        <SeniorityBadge years={member.yearsAtCompany} variant="inline" />
+                      )}
+                    </div>
                     <div className="text-xs text-slate-500 truncate">{member.position}</div>
                   </div>
                   <div className="text-right flex-shrink-0">

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Sparkles, Loader2, BookOpen, Target, Lightbulb } from 'lucide-react';
 import {
   Dialog,
@@ -18,37 +18,28 @@ import {
   SelectValue,
 } from './ui/select';
 import { Checkbox } from './ui/checkbox';
-import { addModuleToUserPath, loadUserModules } from '../storage';
-import { mockModules, teamModules } from './mockData';
-import { LearningModule } from '../App';
+import { RatingDisplay } from './RatingDisplay';
 
 interface GenerateModuleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onModulesAdded?: () => void;
-  userId?: string;
 }
 
-export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userId }: GenerateModuleDialogProps) {
+export function GenerateModuleDialog({ open, onOpenChange }: GenerateModuleDialogProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [learningGoal, setLearningGoal] = useState('');
   const [timeframe, setTimeframe] = useState('4-weeks');
   const [preferredTypes, setPreferredTypes] = useState<string[]>(['video']);
   const [difficulty, setDifficulty] = useState('intermediate');
-  const [selectedTitles, setSelectedTitles] = useState<Set<string>>(new Set());
 
   const handleGenerate = () => {
-    if (!learningGoal.trim()) return;
-    
-    // Reset selections when generating new plan
-    setSelectedTitles(new Set());
     setIsGenerating(true);
-    // Simulate AI generation with actual matching
+    // Simulate AI generation
     setTimeout(() => {
       setIsGenerating(false);
       setShowResults(true);
-    }, 1500); // Reduced time since we're doing real matching
+    }, 3000);
   };
 
   const handleClose = () => {
@@ -59,7 +50,6 @@ export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userI
     setTimeframe('4-weeks');
     setPreferredTypes(['video']);
     setDifficulty('intermediate');
-    setSelectedTitles(new Set());
   };
 
   const toggleContentType = (type: string) => {
@@ -70,126 +60,13 @@ export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userI
     );
   };
 
-  // Generate relevant module suggestions based on user input (memoized to keep IDs stable)
-  const suggestedModulesData = useMemo(() => {
-    if (!learningGoal.trim() || !showResults) return [];
-    
-    // Get all available modules
-    const userModules = userId ? (loadUserModules(userId) ?? []) : [];
-    const allModules = [...mockModules, ...teamModules, ...userModules];
-    
-    // Remove duplicates by ID
-    const uniqueModules = Array.from(
-      new Map(allModules.map(m => [m.id, m])).values()
-    );
-    
-    // Extract keywords from learning goal (lowercase for matching)
-    const goalLower = learningGoal.toLowerCase();
-    const goalWords = goalLower
-      .split(/\s+/)
-      .filter(word => word.length > 2) // Filter out short words like "to", "the", etc.
-      .filter(word => !['want', 'become', 'learn', 'learned', 'learning', 'get', 'need'].includes(word));
-    
-    // Score each module
-    const scoredModules = uniqueModules.map(module => {
-      let matchScore = 0;
-      const maxScore = 100;
-      
-      // 1. Title matching (40 points)
-      const titleLower = module.title.toLowerCase();
-      const titleMatches = goalWords.filter(word => titleLower.includes(word)).length;
-      matchScore += (titleMatches / Math.max(goalWords.length, 1)) * 40;
-      
-      // 2. Description matching (30 points)
-      const descLower = module.description.toLowerCase();
-      const descMatches = goalWords.filter(word => descLower.includes(word)).length;
-      matchScore += (descMatches / Math.max(goalWords.length, 1)) * 30;
-      
-      // 3. Tag matching (20 points)
-      const tagMatches = module.tags.filter(tag => 
-        goalWords.some(word => tag.toLowerCase().includes(word) || word.includes(tag.toLowerCase()))
-      ).length;
-      matchScore += (tagMatches / Math.max(module.tags.length, 1)) * 20;
-      
-      // 4. Category matching (10 points)
-      const categoryLower = module.category.toLowerCase();
-      const categoryMatches = goalWords.filter(word => categoryLower.includes(word)).length;
-      matchScore += (categoryMatches / Math.max(goalWords.length, 1)) * 10;
-      
-      // 5. Content type preference bonus/penalty (max 10 points)
-      if (preferredTypes.includes(module.type)) {
-        matchScore += 10;
-      } else if (preferredTypes.length > 0) {
-        matchScore -= 5; // Penalty for not matching preferred type
-      }
-      
-      // 6. Difficulty matching bonus (5 points)
-      if (difficulty === module.difficulty) {
-        matchScore += 5;
-      }
-      
-      // Ensure score is between 0 and 100
-      matchScore = Math.max(0, Math.min(100, matchScore));
-      
-      // Additional boost for exact phrase matches
-      if (titleLower.includes(goalLower) || descLower.includes(goalLower)) {
-        matchScore = Math.min(100, matchScore + 15);
-      }
-      
-      return { module, match: Math.round(matchScore) };
-    });
-    
-    // Filter out modules with very low match scores (< 10) and sort by match score
-    return scoredModules
-      .filter(item => item.match >= 10)
-      .sort((a, b) => b.match - a.match)
-      .slice(0, 8); // Return top 8 matches
-  }, [learningGoal, preferredTypes, difficulty, showResults]);
-
-  const toggleSelectSuggested = (moduleId: string) => {
-    setSelectedTitles(prev => {
-      const next = new Set(prev);
-      if (next.has(moduleId)) next.delete(moduleId); else next.add(moduleId);
-      return next;
-    });
-  };
-
-  const addSelectedToPath = () => {
-    if (selectedTitles.size === 0) {
-      alert('Please select at least one module to add to your path.');
-      return;
-    }
-    
-    // Add selected modules to user path
-    let addedCount = 0;
-    const modulesToAdd: LearningModule[] = [];
-    
-    suggestedModulesData.forEach(item => {
-      if (selectedTitles.has(item.module.id)) {
-        // Ensure progress is 0 for newly added modules
-        const moduleToAdd = { ...item.module, progress: item.module.progress || 0 };
-        if (userId) {
-          addModuleToUserPath(moduleToAdd, userId);
-        }
-        modulesToAdd.push(moduleToAdd);
-        addedCount++;
-      }
-    });
-    
-    // Show success message first
-    if (addedCount > 0) {
-      alert(`Successfully added ${addedCount} ${addedCount === 1 ? 'module' : 'modules'} to your learning path!`);
-      
-      // Notify parent that modules were added (after a small delay to ensure storage is written)
-      if (onModulesAdded) {
-        setTimeout(() => {
-          onModulesAdded();
-        }, 100);
-      }
-    }
-    
-    handleClose();
-  };
+  const suggestedModules = [
+    { title: 'React Advanced Patterns', duration: 45, type: 'video', match: 95, rating: 4.7, totalRatings: 128 },
+    { title: 'TypeScript Mastery', duration: 120, type: 'video', match: 92, rating: 4.9, totalRatings: 163 },
+    { title: 'Microservices Architecture Deep Dive', duration: 60, type: 'podcast', match: 88, rating: 4.5, totalRatings: 94 },
+    { title: 'Leadership Fundamentals', duration: 90, type: 'video', match: 85, rating: 4.8, totalRatings: 215 },
+    { title: 'Cloud Architecture with AWS', duration: 180, type: 'video', match: 82, rating: 4.6, totalRatings: 201 },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -316,7 +193,7 @@ export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userI
                 <div>
                   <h4 className="text-sm mb-1">Learning Plan Generated!</h4>
                   <p className="text-sm text-slate-600">
-                    Found {suggestedModulesData.length} {suggestedModulesData.length === 1 ? 'module' : 'modules'} from your company database that match your goals
+                    Found {suggestedModules.length} modules from your company database that match your goals
                   </p>
                 </div>
               </div>
@@ -325,62 +202,36 @@ export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userI
             <div>
               <h4 className="text-sm mb-3 flex items-center gap-2">
                 <BookOpen className="w-4 h-4" />
-                Recommended Modules (select the ones you want)
+                Recommended Modules (in order)
               </h4>
               <div className="space-y-2">
-                {suggestedModulesData.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500">
-                    <p className="text-sm mb-2">No matching modules found.</p>
-                    <p className="text-xs">Try adjusting your learning goal or preferences.</p>
-                  </div>
-                ) : (
-                  suggestedModulesData.map((item) => {
-                    const { module, match } = item;
-                    return (
-                      <div 
-                        key={module.id}
-                        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        <Checkbox 
-                          checked={selectedTitles.has(module.id)} 
-                          onCheckedChange={() => toggleSelectSuggested(module.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate">{module.title}</div>
-                          <div className="text-xs text-slate-500 mt-1 line-clamp-1">
-                            {module.description}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-slate-500">
-                              {module.duration} min • {module.type} • {module.difficulty}
-                            </span>
-                            {module.category && (
-                              <span className="text-xs text-blue-600">{module.category}</span>
-                            )}
-                          </div>
-                          {module.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {module.tags.slice(0, 3).map(tag => (
-                                <span key={tag} className="text-xs px-1.5 py-0.5 bg-slate-100 rounded">
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                          <div className="text-xs font-medium text-green-600">{match}% match</div>
-                          <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                            <div 
-                              className="h-full bg-green-600 rounded-full transition-all"
-                              style={{ width: `${match}%` }}
-                            />
-                          </div>
-                        </div>
+                {suggestedModules.map((module, index) => (
+                  <div 
+                    key={index}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-700 rounded-full text-xs flex-shrink-0">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{module.title}</div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>{module.duration} min • {module.type}</span>
+                        <span>•</span>
+                        <RatingDisplay rating={module.rating} totalRatings={module.totalRatings} size="sm" />
                       </div>
-                    );
-                  })
-                )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="text-xs text-green-600">{module.match}% match</div>
+                      <div className="w-16 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-green-600 rounded-full"
+                          style={{ width: `${module.match}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -393,11 +244,10 @@ export function GenerateModuleDialog({ open, onOpenChange, onModulesAdded, userI
                 Close
               </Button>
               <Button
-                onClick={addSelectedToPath}
+                onClick={handleClose}
                 className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                disabled={selectedTitles.size === 0}
               >
-                Add Selected to My Path
+                Add to My Learning Path
               </Button>
             </div>
           </div>

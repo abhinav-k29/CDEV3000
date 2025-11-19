@@ -7,12 +7,11 @@ import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Textarea } from './ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import { LearningModule, User } from '../App';
-import { updateModuleProgress, logActivity } from '../storage';
+import { LearningModule } from '../App';
+import { SeniorityBadge } from './SeniorityBadge';
 
 interface ModulePlayerProps {
   module: LearningModule;
-  user?: User;
   onBack: () => void;
 }
 
@@ -27,9 +26,10 @@ interface ModuleComment {
   likes: number;
   isResolved?: boolean;
   replies?: ModuleComment[];
+  userYearsAtCompany?: number;
 }
 
-export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
+export function ModulePlayer({ module, onBack }: ModulePlayerProps) {
   const [currentProgress, setCurrentProgress] = useState(module.progress);
   const [currentSection, setCurrentSection] = useState(0);
   const [newComment, setNewComment] = useState('');
@@ -47,6 +47,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
       timestamp: new Date('2024-10-25T14:30:00'),
       likes: 12,
       isResolved: false,
+      userYearsAtCompany: 2,
       replies: [
         {
           id: 'c1-r1',
@@ -57,6 +58,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
           comment: 'Totally agree! I also recommend checking out the official React docs on hooks - they complement this module really well.',
           timestamp: new Date('2024-10-25T15:45:00'),
           likes: 5,
+          userYearsAtCompany: 4,
         },
       ],
     },
@@ -70,6 +72,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
       timestamp: new Date('2024-10-27T10:15:00'),
       likes: 8,
       isResolved: true,
+      userYearsAtCompany: 5,
       replies: [
         {
           id: 'c2-r1',
@@ -80,6 +83,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
           comment: 'Great question! Memoization is basically caching - React remembers the result of expensive calculations so it doesn\'t have to repeat them every time. Think of it like saving your work so you don\'t have to start from scratch.',
           timestamp: new Date('2024-10-27T11:00:00'),
           likes: 15,
+          userYearsAtCompany: 1,
         },
         {
           id: 'c2-r2',
@@ -90,6 +94,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
           comment: 'That makes so much sense! Thanks David! ✅',
           timestamp: new Date('2024-10-27T11:30:00'),
           likes: 3,
+          userYearsAtCompany: 5,
         },
       ],
     },
@@ -103,6 +108,7 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
       timestamp: new Date('2024-10-28T09:00:00'),
       likes: 20,
       isResolved: false,
+      userYearsAtCompany: 3,
     },
   ]);
 
@@ -118,21 +124,6 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
     if (currentProgress < 100) {
       const newProgress = Math.min(100, currentProgress + 20);
       setCurrentProgress(newProgress);
-      if (user) {
-        updateModuleProgress(module.id, newProgress, user.id, module);
-      }
-      
-      // Log completion activity
-      if (newProgress === 100 && user) {
-        logActivity({
-          type: 'complete',
-          userId: user.id,
-          userName: user.name,
-          userAvatar: user.avatar,
-          targetModuleId: module.id,
-          targetModuleTitle: module.title,
-        });
-      }
     }
   };
 
@@ -498,11 +489,14 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2 mb-2">
                                 <div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <span>{comment.userName}</span>
                                     <Badge variant="outline" className="text-xs">
                                       {comment.userRole}
                                     </Badge>
+                                    {comment.userYearsAtCompany && (
+                                      <SeniorityBadge years={comment.userYearsAtCompany} variant="inline" />
+                                    )}
                                     {comment.isResolved && (
                                       <Badge className="text-xs bg-green-600">
                                         ✓ Resolved
@@ -600,11 +594,14 @@ export function ModulePlayer({ module, user, onBack }: ModulePlayerProps) {
                                       
                                       <div className="flex-1 min-w-0">
                                         <div className="mb-1">
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-sm">{reply.userName}</span>
                                             <Badge variant="outline" className="text-xs">
                                               {reply.userRole}
                                             </Badge>
+                                            {reply.userYearsAtCompany && (
+                                              <SeniorityBadge years={reply.userYearsAtCompany} variant="inline" />
+                                            )}
                                           </div>
                                           <div className="text-xs text-slate-500">
                                             {reply.timestamp.toLocaleString('en-US', {

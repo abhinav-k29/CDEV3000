@@ -40,8 +40,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </Button>
                 <Button 
                   size="lg" 
+                  variant="outline"
                   onClick={() => onLogin('manager')}
-                  className="bg-white text-blue-700 hover:bg-blue-50"
+                  className="border-white text-white hover:bg-white/10"
                 >
                   <BarChart3 className="w-5 h-5 mr-2" />
                   Manager Login
@@ -49,9 +50,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </div>
               
               <div className="flex gap-8 pt-4">
-                
                 <div>
-                  <div className="text-3xl">6k+</div>
+                  <div className="text-3xl">500+</div>
+                  <div className="text-blue-200 text-sm">Companies</div>
+                </div>
+                <div>
+                  <div className="text-3xl">50K+</div>
                   <div className="text-blue-200 text-sm">Active Learners</div>
                 </div>
                 <div>
@@ -159,6 +163,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* CTA Section */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-12 text-white text-center">
           <h2 className="text-3xl lg:text-4xl mb-4">Ready to Transform Your Team's Learning?</h2>
+          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+            Join thousands of companies using our platform to upskill their workforce
+          </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Button 
               size="lg"
@@ -169,8 +176,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             </Button>
             <Button 
               size="lg"
+              variant="outline"
               onClick={() => onLogin('manager')}
-              className="bg-white text-blue-700 hover:bg-blue-50"
+              className="border-white text-white hover:bg-white/10"
             >
               View Manager Dashboard
             </Button>
