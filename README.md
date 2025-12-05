@@ -10,7 +10,6 @@ LearnHub combines:
 - 📊 **Manager analytics** – team & company learning insights  
 - 🕸 **Learning graph** – visual view of paths and branches
 
-> ⚠️ This is a **front-end prototype** with mocked data (no real TPG systems, no live AI backend).
 
 ---
 
@@ -275,7 +274,6 @@ Tabs:
   - Completion vs in-progress across major learning categories.
 - Risk callouts for lagging departments.
 
-> All analytics are based on **mock data** – no real integration.
 
 ---
 
@@ -288,13 +286,6 @@ Tabs:
   - Module chat rooms (`moduleChatRooms`)
   - Team activities (`teamActivities`)
   - Theme (`darkMode`)
-- Routing is handled by a `currentView` state in `App.tsx` (not a full router).
-
-**Not implemented yet:**
-
-- No real TPG LMS (Totara/Kineo), WalkMe, Salesforce, Genesys, or HRIS integration.
-- No real AI backend (all “AI” behaviour is mocked).
-- No auth, multi-user persistence, or backend API.
 
 ---
 
